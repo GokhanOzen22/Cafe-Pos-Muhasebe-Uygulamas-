@@ -74,7 +74,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [showUnpaidModal, setShowUnpaidModal] = useState<boolean>(false);
   const [debtCustomerName, setDebtCustomerName] = useState<string>(order?.customerNotes || '');
-  const [paymentType, setPaymentType] = useState<'nakit' | 'kredi_karti' | 'yemek_karti'>('kredi_karti');
+  const [paymentType, setPaymentType] = useState<'nakit' | 'kredi_karti'>('kredi_karti');
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState<string>('');
 
@@ -828,7 +828,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
             {/* Payment Method Selector */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-stone-600 dark:text-stone-400">Ödeme Yöntemi Seçin:</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPaymentType('kredi_karti')}
@@ -853,19 +853,6 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                 >
                   <Banknote className="w-5 h-5" />
                   <span>Nakit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentType('yemek_karti')}
-                  className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
-                    paymentType === 'yemek_karti'
-                      ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-sm'
-                      : 'border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
-                  }`}
-                >
-                  <Ticket className="w-5 h-5" />
-                  <span>Yemek Çeki</span>
                 </button>
               </div>
             </div>

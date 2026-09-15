@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, CreditCard, Banknote, Ticket, X } from 'lucide-react';
+import { CheckCircle2, CreditCard, Banknote, X } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification } from './types';
 
@@ -51,7 +51,7 @@ export default function App() {
   const [showUnpaidDebtsModal, setShowUnpaidDebtsModal] = useState<boolean>(false);
   const [showCriticalStockModal, setShowCriticalStockModal] = useState<boolean>(false);
   const [debtPaymentModalOrder, setDebtPaymentModalOrder] = useState<Order | null>(null);
-  const [debtPaymentType, setDebtPaymentType] = useState<'nakit' | 'kredi_karti' | 'yemek_karti'>('kredi_karti');
+  const [debtPaymentType, setDebtPaymentType] = useState<'nakit' | 'kredi_karti'>('kredi_karti');
 
   // Load state on mount and sync with local Kasa server
   useEffect(() => {
@@ -1001,7 +1001,7 @@ export default function App() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-stone-700 dark:text-stone-300 block">Ödeme Yöntemi Seçiniz:</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setDebtPaymentType('kredi_karti')}
@@ -1026,19 +1026,6 @@ export default function App() {
                 >
                   <Banknote className="w-5 h-5" />
                   <span>Nakit</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setDebtPaymentType('yemek_karti')}
-                  className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all ${
-                    debtPaymentType === 'yemek_karti'
-                      ? 'bg-amber-500 text-stone-950 border-amber-500 shadow-xs'
-                      : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
-                  }`}
-                >
-                  <Ticket className="w-5 h-5" />
-                  <span>Yemek Kartı</span>
                 </button>
               </div>
             </div>
