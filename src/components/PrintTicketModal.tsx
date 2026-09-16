@@ -145,19 +145,6 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
             {order.waiterName}
           </span>
         </div>
-        {order.customerNotes && (
-          <div
-            className="p-1 rounded my-1"
-            style={{
-              border: '1.5px solid #000000',
-              backgroundColor: '#f5f5f5',
-              color: '#000000',
-            }}
-          >
-            <div className="text-[11px] font-black uppercase">Müşteri Notu:</div>
-            <div className="text-xs font-bold">{order.customerNotes}</div>
-          </div>
-        )}
       </div>
 
       <div

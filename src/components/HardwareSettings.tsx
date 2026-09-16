@@ -101,6 +101,27 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
   const [isScanningUsb, setIsScanningUsb] = useState<boolean>(false);
   const [usbScanError, setUsbScanError] = useState<string | null>(null);
   const [usbScanSuccess, setUsbScanSuccess] = useState<string | null>(null);
+  const [detectedUsbDevices, setDetectedUsbDevices] = useState<Array<{ name: string; vid: string; pid: string; port: string }>>([]);
+
+  // Load previously granted or connected WebUSB devices
+  const checkGrantedUsbDevices = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && 'usb' in navigator) {
+        const devices = await (navigator as any).usb.getDevices();
+        if (devices && devices.length > 0) {
+          const list = devices.map((d: any, idx: number) => ({
+            name: d.productName || d.manufacturerName || `USB Termal Aygıt #${idx + 1}`,
+            vid: '0x' + d.vendorId.toString(16).padStart(4, '0').toUpperCase(),
+            pid: '0x' + d.productId.toString(16).padStart(4, '0').toUpperCase(),
+            port: `USB-DEV-${idx + 1}`,
+          }));
+          setDetectedUsbDevices(list);
+        }
+      }
+    } catch (e) {
+      // Benign catch for environments without WebUSB permissions
+    }
+  };
 
   // WebUSB Direct Detection
   const handleScanWebUsb = async () => {
@@ -110,7 +131,7 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
 
     try {
       if (typeof navigator === 'undefined' || !('usb' in navigator)) {
-        setUsbScanError('Tarayıcınız doğrudan WebUSB donanım erişimini desteklemiyor veya izin verilmedi. Lütfen Chrome, Edge veya Opera kullanın veya aşağıdaki listeden USB portunu (örn: USB001) seçin.');
+        setUsbScanError('Tarayıcınız doğrudan WebUSB donanım arayüzünü desteklemiyor veya izin verilmedi. Aşağıdaki listeden Windows USB Portunu (USB001 veya Xprinter/Epson USB) seçerek devam edebilirsiniz.');
         setIsScanningUsb(false);
         return;
       }
@@ -130,15 +151,21 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
         setProductId(pid);
         setUsbPort('USB-DIRECT');
         
+        // Add to detected devices list
+        setDetectedUsbDevices((prev) => {
+          const filtered = prev.filter((p) => p.vid !== vid || p.pid !== pid);
+          return [{ name: devName, vid, pid, port: 'USB-DIRECT' }, ...filtered];
+        });
+
         if (!printerName.trim()) {
           setPrinterName(`${devName} (USB)`);
         }
         
-        setUsbScanSuccess(`Cihaz Başarıyla Eşleştirildi: ${devName} (VID: ${vid}, PID: ${pid})`);
+        setUsbScanSuccess(`USB Aygıtı Başarıyla Bağlandı: ${devName} (Vendor ID: ${vid}, Product ID: ${pid})`);
       }
     } catch (err: any) {
       if (err.name !== 'NotFoundError') {
-        setUsbScanError(`USB Bağlantı Uyarısı: ${err.message || 'Cihaz seçilmedi'}`);
+        setUsbScanError(`USB Aygıt Seçim Bildirimi: ${err.message || 'Cihaz seçilmedi. Aşağıdaki hazır USB port listesinden seçim yapabilirsiniz.'}`);
       }
     } finally {
       setIsScanningUsb(false);
@@ -156,6 +183,7 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
   const handleOpenPrinterModal = (printer?: PrinterDevice) => {
     setUsbScanError(null);
     setUsbScanSuccess(null);
+    checkGrantedUsbDevices();
 
     if (printer) {
       setEditingPrinter(printer);
@@ -1117,23 +1145,111 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
                     </div>
                   )}
 
+                  {/* Quick Select USB Profile Buttons */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-600 dark:text-stone-400 mb-1.5">
+                      Hızlı USB Yazıcı Seçimi (En Çok Kullanılan Modeller):
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUsbPort('USB001');
+                          setUsbDeviceName('POS-80 Thermal USB Printer');
+                          if (!printerName.trim()) setPrinterName('Kasa Adisyon (USB001)');
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 transition-colors"
+                      >
+                        ⚡ Windows USB001
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUsbPort('USB-XPRINTER');
+                          setUsbDeviceName('Xprinter XP-80C / XP-N160M USB');
+                          if (!printerName.trim()) setPrinterName('Xprinter Termal (USB)');
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 transition-colors"
+                      >
+                        ⚡ Xprinter USB
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUsbPort('USB-EPSON');
+                          setUsbDeviceName('Epson TM-T20 / TM-T88 USB');
+                          if (!printerName.trim()) setPrinterName('Epson TM Termal (USB)');
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 transition-colors"
+                      >
+                        ⚡ Epson USB
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUsbPort('USB-POS-80');
+                          setUsbDeviceName('Standart 80mm Termal USB');
+                          if (!printerName.trim()) setPrinterName('80mm Termal (USB)');
+                        }}
+                        className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-stone-200 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border border-stone-300 dark:border-stone-700 transition-colors"
+                      >
+                        ⚡ 80mm Standart USB
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-stone-600 dark:text-stone-400 mb-1">
-                        USB Yazıcı Portu / Yolu
+                        USB Yazıcı Portu / Donanım Yolu
                       </label>
                       <select
                         value={usbPort}
-                        onChange={(e) => setUsbPort(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setUsbPort(val);
+                          // Auto match detected device details if selected
+                          const matchedDev = detectedUsbDevices.find(d => d.port === val || d.name === val);
+                          if (matchedDev) {
+                            setUsbDeviceName(matchedDev.name);
+                            setVendorId(matchedDev.vid);
+                            setProductId(matchedDev.pid);
+                          } else if (val === 'USB-XPRINTER' && !usbDeviceName) {
+                            setUsbDeviceName('Xprinter XP-80C / XP-N160M USB');
+                          } else if (val === 'USB-EPSON' && !usbDeviceName) {
+                            setUsbDeviceName('Epson TM-T20 / TM-T88 USB');
+                          } else if (val === 'USB-BIXOLON' && !usbDeviceName) {
+                            setUsbDeviceName('Bixolon SRP-330 / SRP-350 USB');
+                          } else if (val === 'USB-RONGTA' && !usbDeviceName) {
+                            setUsbDeviceName('Rongta RP80 / RP326 USB');
+                          }
+                        }}
                         className="w-full p-2.5 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl text-xs font-semibold"
                       >
-                        <option value="USB001">USB001 (Birincil Sanal USB Yazıcı Portu)</option>
-                        <option value="USB002">USB002 (İkincil Sanal USB Portu)</option>
-                        <option value="USB003">USB003 (Sanal USB Port 3)</option>
-                        <option value="USB-POS-80">USB-POS-80 (80mm Standart USB Termal)</option>
-                        <option value="USB-POS-58">USB-POS-58 (58mm Standart USB Termal)</option>
-                        <option value="USB-DIRECT">USB-DIRECT (Doğrudan WebUSB Bağlantısı)</option>
-                        <option value="custom">Özel USB Portu Belirt...</option>
+                        {detectedUsbDevices.length > 0 && (
+                          <optgroup label="── Algılanan WebUSB Donanımları ──">
+                            {detectedUsbDevices.map((d, idx) => (
+                              <option key={idx} value={d.port}>
+                                [ALGILANAN USB] {d.name} ({d.vid})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="── Windows Sanal USB Yazıcı Portları ──">
+                          <option value="USB001">USB001 (Windows Birincil USB Yazıcı Portu - Önerilen)</option>
+                          <option value="USB002">USB002 (İkincil Sanal USB Portu)</option>
+                          <option value="USB003">USB003 (Sanal USB Port 3)</option>
+                        </optgroup>
+                        <optgroup label="── Hazır USB Termal Yazıcı Profilleri ──">
+                          <option value="USB-POS-80">USB-POS-80 (80mm Standart USB Termal)</option>
+                          <option value="USB-POS-58">USB-POS-58 (58mm Standart USB Termal)</option>
+                          <option value="USB-XPRINTER">USB-XPRINTER (Xprinter Termal USB)</option>
+                          <option value="USB-EPSON">USB-EPSON (Epson TM-T20 / TM-T88 USB)</option>
+                          <option value="USB-BIXOLON">USB-BIXOLON (Bixolon SRP Termal USB)</option>
+                          <option value="USB-RONGTA">USB-RONGTA (Rongta / Zjiang 80mm USB)</option>
+                          <option value="USB-DIRECT">USB-DIRECT (Doğrudan WebUSB Bağlantısı)</option>
+                          <option value="custom">Özel USB Portu Belirt...</option>
+                        </optgroup>
                       </select>
                     </div>
 
@@ -1174,9 +1290,12 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
                     </div>
                   )}
 
-                  <p className="text-[11px] text-stone-500 dark:text-stone-400 italic">
-                    💡 Doğrudan USB bağlantısında COM port veya Baud Rate kullanılmaz. Bilgisayarınızın USB portuna takılı olan termal yazıcı doğrudan USB veri yolu veya Windows sanal USB portu (USB001) üzerinden haberleşir.
-                  </p>
+                  <div className="p-2.5 bg-amber-500/10 dark:bg-amber-950/40 rounded-xl border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed flex items-start gap-2">
+                    <Usb className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Direct USB Modu:</strong> COM Port veya Baud Rate gerekmez. Bilgisayarınızın USB portuna takılı olan termal yazıcı doğrudan USB veri yolu veya Windows sanal USB portu (USB001 / USB002) üzerinden haberleşir.
+                    </div>
+                  </div>
                 </div>
               )}
 

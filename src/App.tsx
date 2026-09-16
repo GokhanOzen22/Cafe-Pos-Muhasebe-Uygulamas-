@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CheckCircle2, CreditCard, Banknote, X } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification } from './types';
+import { initialOrders } from './data/initialData';
 
 import { Header } from './components/Header';
 import { TableGrid } from './components/TableGrid';
@@ -71,7 +72,15 @@ export default function App() {
       setStockItems(StorageService.getStockItems());
       setPurchaseInvoices(StorageService.getPurchaseInvoices());
       setExpenseInvoices(StorageService.getExpenseInvoices());
-      setOrders(StorageService.getOrders());
+      let localOrders = StorageService.getOrders();
+      if (!localOrders || localOrders.length === 0 || !localOrders.some((o) => o.status === 'closed')) {
+        const closedInitial = initialOrders.filter((o) => o.status === 'closed');
+        const existingIds = new Set(localOrders.map((o) => o.id));
+        const toAdd = closedInitial.filter((o) => !existingIds.has(o.id));
+        localOrders = [...localOrders, ...toAdd];
+        StorageService.saveOrders(localOrders, false);
+      }
+      setOrders(localOrders);
       setUsers(loadedUsers);
       setSettings(StorageService.getSettings());
 
@@ -85,7 +94,17 @@ export default function App() {
         if (serverData.stockItems) setStockItems(serverData.stockItems);
         if (serverData.purchaseInvoices) setPurchaseInvoices(serverData.purchaseInvoices);
         if (serverData.expenseInvoices) setExpenseInvoices(serverData.expenseInvoices);
-        if (serverData.orders) setOrders(serverData.orders);
+        if (serverData.orders) {
+          let serverOrders = serverData.orders;
+          if (!serverOrders.some((o) => o.status === 'closed')) {
+            const closedInitial = initialOrders.filter((o) => o.status === 'closed');
+            const existingIds = new Set(serverOrders.map((o) => o.id));
+            const toAdd = closedInitial.filter((o) => !existingIds.has(o.id));
+            serverOrders = [...serverOrders, ...toAdd];
+            StorageService.saveOrders(serverOrders, true);
+          }
+          setOrders(serverOrders);
+        }
         if (serverData.settings) setSettings(serverData.settings);
         if (serverData.users) setUsers(serverData.users);
         if (serverData.notifications) {
@@ -890,6 +909,18 @@ export default function App() {
             currentUser={currentUser}
             onAddPurchaseInvoice={handleAddPurchaseInvoice}
             onAddExpenseInvoice={handleAddExpenseInvoice}
+            onUpdatePurchaseInvoices={(newInvoices) => {
+              setPurchaseInvoices(newInvoices);
+              StorageService.savePurchaseInvoices(newInvoices);
+            }}
+            onUpdateExpenseInvoices={(newExpenses) => {
+              setExpenseInvoices(newExpenses);
+              StorageService.saveExpenseInvoices(newExpenses);
+            }}
+            onUpdateOrders={(newOrders) => {
+              setOrders(newOrders);
+              StorageService.saveOrders(newOrders);
+            }}
             onOpenAddInvoiceModal={() => setShowAddInvoiceModal(true)}
             onUpdateCategories={(newCat) => {
               setCategories(newCat);

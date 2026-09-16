@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { createServer as createViteServer } from 'vite';
 import initSqlJs, { Database } from 'sql.js';
+import { initialOrders, initialPurchaseInvoices, initialExpenseInvoices } from './src/data/initialData';
 
 interface LogEntry {
   id: string;
@@ -366,7 +367,9 @@ async function startServer() {
     setKV('categories', initialCategories);
     setKV('menu_items', initialMenuItems);
     setKV('stock_items', initialStockItems);
-    setKV('orders', []);
+    setKV('purchase_invoices', initialPurchaseInvoices);
+    setKV('expense_invoices', initialExpenseInvoices);
+    setKV('orders', initialOrders);
     setKV('settings', defaultSettings);
     setKV('users', initialUsers);
 
@@ -459,7 +462,21 @@ async function startServer() {
     const categories = getKV('categories', initialCategories);
     const menuItems = getKV('menu_items', initialMenuItems);
     const stockItems = getKV('stock_items', initialStockItems);
-    const orders = getKV('orders', []);
+    const purchaseInvoices = getKV('purchase_invoices', initialPurchaseInvoices);
+    const expenseInvoices = getKV('expense_invoices', initialExpenseInvoices);
+    let orders = getKV<any[]>('orders', initialOrders);
+    if (!orders || orders.length === 0) {
+      orders = initialOrders;
+      setKV('orders', orders);
+    } else {
+      // Ensure closed order history is present if none exists
+      const hasClosed = orders.some((o: any) => o.status === 'closed');
+      if (!hasClosed) {
+        const closedInitial = initialOrders.filter((o: any) => o.status === 'closed');
+        orders = [...orders, ...closedInitial];
+        setKV('orders', orders);
+      }
+    }
     const settings = getKV('settings', defaultSettings);
     const users = getKV('users', initialUsers);
     const notifications = getKV('kitchen_notifications', []);
@@ -470,6 +487,8 @@ async function startServer() {
       categories,
       menuItems,
       stockItems,
+      purchaseInvoices,
+      expenseInvoices,
       orders,
       settings,
       users,
@@ -485,6 +504,8 @@ async function startServer() {
       categories,
       menuItems,
       stockItems,
+      purchaseInvoices,
+      expenseInvoices,
       orders,
       settings,
       users,
@@ -497,6 +518,8 @@ async function startServer() {
     if (categories !== undefined) setKV('categories', categories);
     if (menuItems !== undefined) setKV('menu_items', menuItems);
     if (stockItems !== undefined) setKV('stock_items', stockItems);
+    if (purchaseInvoices !== undefined) setKV('purchase_invoices', purchaseInvoices);
+    if (expenseInvoices !== undefined) setKV('expense_invoices', expenseInvoices);
     if (orders !== undefined) setKV('orders', orders);
     if (settings !== undefined) setKV('settings', settings);
     if (users !== undefined) setKV('users', users);

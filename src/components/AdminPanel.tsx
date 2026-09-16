@@ -8,7 +8,7 @@ import {
   PieChart as PieChartIcon, Search, Check, RefreshCw, Users, Key,
   Percent, Coins, ArrowUpDown, Tag, X, LayoutGrid, Layers, Coffee,
   CupSoda, Egg, UtensilsCrossed, Hamburger, Cake, Upload, Image as ImageIcon, Building2, Link as LinkIcon,
-  FileText, PlusCircle, FilePlus, Zap, Receipt
+  FileText, PlusCircle, FilePlus, Zap, Receipt, Eye, CheckCircle2, Calendar, Clock, Filter, AlertCircle
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -46,6 +46,7 @@ interface AdminPanelProps {
   onUpdateTables: (tables: Table[]) => void;
   onUpdateSettings: (settings: RestaurantSettings) => void;
   onUpdateUsers: (users: AppUser[]) => void;
+  onUpdateOrders?: (orders: Order[]) => void;
   onOpenPrintTicket: (order: Order) => void;
 }
 
@@ -73,6 +74,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateTables,
   onUpdateSettings,
   onUpdateUsers,
+  onUpdateOrders,
   onOpenPrintTicket,
 }) => {
   // Determine sub-tab permissions
@@ -215,7 +217,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 3 * 1024 * 1024) {
-        alert('Logo görsel boyutu en fazla 3MB olabilir.');
+        showToast('Logo görsel boyutu en fazla 3MB olabilir.');
         return;
       }
       const reader = new FileReader();
@@ -224,6 +226,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  // Editing Expense Invoice State
+  const [editingExpenseInvoice, setEditingExpenseInvoice] = useState<ExpenseInvoice | null>(null);
+
+  // Editing Purchase Invoice State
+  const [editingPurchaseInvoice, setEditingPurchaseInvoice] = useState<PurchaseInvoice | null>(null);
+
+  // Custom in-app Confirmation Dialog State (replacing blocked window.confirm)
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    type: 'menu_item' | 'category' | 'stock_item' | 'expense_invoice' | 'purchase_invoice' | 'order' | 'zone' | 'table';
+    id: string;
+    title: string;
+    message: string;
+    warning?: string;
+    confirmText?: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Viewing Order Detail Modal (for Geçmiş Adisyonlar)
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+
+  // Past Orders Filter & Search State
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'closed' | 'unpaid_debt' | 'open'>('all');
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>('');
+  const [historyDateFilter, setHistoryDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week'>('all');
+
+  // In-app Toast Notification State (replacing blocked window.alert)
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+    }, 3500);
   };
 
   // Filter closed completed orders for reports
@@ -596,14 +634,142 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleDeleteCategory = (catId: string, catName: string) => {
-    const itemCount = menuItems.filter((m) => m.categoryId === catId).length;
-    if (itemCount > 0) {
-      alert(`"${catName}" kategorisine ait ${itemCount} adet ürün bulunmaktadır. Silmeden önce bu ürünlerin kategorisini değiştirin.`);
-      return;
-    }
-    if (confirm(`"${catName}" kategorisini silmek istediğinize emin misiniz?`)) {
-      onUpdateCategories(categories.filter((c) => c.id !== catId));
-    }
+    const linkedItems = menuItems.filter((m) => m.categoryId === catId);
+    const count = linkedItems.length;
+    const fallbackCat = categories.find((c) => c.id !== catId);
+
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'category',
+      id: catId,
+      title: 'Kategoriyi Sil',
+      message: `"${catName}" kategorisini silmek istediğinize emin misiniz?`,
+      warning: count > 0
+        ? `Bu kategoriye ait ${count} adet ürün bulunmaktadır. Kategori silindiğinde bu ürünler otomatik olarak "${fallbackCat ? fallbackCat.name : 'Genel'}" kategorisine aktarılacaktır.`
+        : undefined,
+      confirmText: count > 0 ? 'Kategoriyi Sil ve Ürünleri Taşı' : 'Evet, Kategoriyi Sil',
+      onConfirm: () => {
+        if (count > 0 && fallbackCat) {
+          const updatedItems = menuItems.map((m) =>
+            m.categoryId === catId ? { ...m, categoryId: fallbackCat.id } : m
+          );
+          onUpdateMenuItems(updatedItems);
+        }
+        onUpdateCategories(categories.filter((c) => c.id !== catId));
+        showToast(`"${catName}" kategorisi başarıyla silindi.`);
+      },
+    });
+  };
+
+  const handleDeleteMenuItem = (item: MenuItem) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'menu_item',
+      id: item.id,
+      title: 'Ürünü Menüden Sil',
+      message: `"${item.name}" ürününü menüden kaldırmak istediğinize emin misiniz? Bu işlem geri alınamaz.`,
+      confirmText: 'Evet, Ürünü Sil',
+      onConfirm: () => {
+        onUpdateMenuItems(menuItems.filter((m) => m.id !== item.id));
+        showToast(`"${item.name}" menüden silindi.`);
+      },
+    });
+  };
+
+  const handleDeleteStockItem = (stock: StockItem) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'stock_item',
+      id: stock.id,
+      title: 'Hammadde / Stok Kaydını Sil',
+      message: `"${stock.name}" hammadde ve stok kartını silmek istediğinize emin misiniz?`,
+      warning: 'Bu hammaddeye bağlı geçmiş fiş kayıtları etkilenebilir.',
+      confirmText: 'Evet, Stoğu Sil',
+      onConfirm: () => {
+        onUpdateStockItems(stockItems.filter((s) => s.id !== stock.id));
+        showToast(`"${stock.name}" stok kaydı silindi.`);
+      },
+    });
+  };
+
+  const handleDeleteExpense = (exp: ExpenseInvoice) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'expense_invoice',
+      id: exp.id,
+      title: 'Fatura / Gider Kaydını Sil',
+      message: `"${exp.title}" (${formatCurrency(exp.amount, settings.currencySymbol)}) gider faturası kaydını silmek istediğinize emin misiniz?`,
+      confirmText: 'Evet, Faturayı Sil',
+      onConfirm: () => {
+        const updated = expenseInvoices.filter((e) => e.id !== exp.id);
+        if (onUpdateExpenseInvoices) onUpdateExpenseInvoices(updated);
+        showToast(`"${exp.title}" faturası silindi.`);
+      },
+    });
+  };
+
+  const handleSaveEditedExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpenseInvoice) return;
+    const updated = expenseInvoices.map((exp) =>
+      exp.id === editingExpenseInvoice.id ? editingExpenseInvoice : exp
+    );
+    if (onUpdateExpenseInvoices) onUpdateExpenseInvoices(updated);
+    setEditingExpenseInvoice(null);
+    showToast(`"${editingExpenseInvoice.title}" faturası güncellendi.`);
+  };
+
+  const handleDeletePurchase = (inv: PurchaseInvoice) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'purchase_invoice',
+      id: inv.id,
+      title: 'Mal Alım Fişini Sil',
+      message: `"${inv.invoiceNo}" nolu (${inv.supplierName} - ${inv.stockItemName}) fiş kaydını silmek istediğinize emin misiniz?`,
+      confirmText: 'Evet, Fişi Sil',
+      onConfirm: () => {
+        const updated = purchaseInvoices.filter((p) => p.id !== inv.id);
+        if (onUpdatePurchaseInvoices) onUpdatePurchaseInvoices(updated);
+        showToast(`"${inv.invoiceNo}" nolu mal alım fişi silindi.`);
+      },
+    });
+  };
+
+  const handleSaveEditedPurchase = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPurchaseInvoice) return;
+    const qty = Number(editingPurchaseInvoice.quantity) || 0;
+    const price = Number(editingPurchaseInvoice.unitPrice) || 0;
+    const updatedInvoice: PurchaseInvoice = {
+      ...editingPurchaseInvoice,
+      quantity: qty,
+      unitPrice: price,
+      totalAmount: qty * price,
+    };
+    const updated = purchaseInvoices.map((inv) =>
+      inv.id === updatedInvoice.id ? updatedInvoice : inv
+    );
+    if (onUpdatePurchaseInvoices) onUpdatePurchaseInvoices(updated);
+    setEditingPurchaseInvoice(null);
+    showToast(`"${updatedInvoice.invoiceNo}" mal alım fişi güncellendi.`);
+  };
+
+  const handleDeleteOrder = (ord: Order) => {
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'order',
+      id: ord.id,
+      title: 'Adisyonu Sil',
+      message: `"${ord.id}" nolu (${ord.tableName} - ${formatCurrency(ord.totalAmount, settings.currencySymbol)}) adisyon kaydını geçmişten silmek istediğinize emin misiniz?`,
+      warning: 'Bu işlem raporlanan satış ve ciro toplamlarını etkileyecektir.',
+      confirmText: 'Evet, Adisyonu Sil',
+      onConfirm: () => {
+        if (onUpdateOrders) {
+          onUpdateOrders(orders.filter((o) => o.id !== ord.id));
+        }
+        showToast(`"${ord.id}" adisyon kaydı silindi.`);
+      },
+    });
   };
 
   // Zone Handlers
@@ -621,6 +787,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setShowAddZoneModal(false);
     setNewZoneName('');
     setNewZoneDesc('');
+    showToast(`"${newZone.name}" salonu oluşturuldu.`);
   };
 
   const handleOpenEditZone = (z: Zone) => {
@@ -641,23 +808,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     onUpdateZones(updatedZones);
     setEditingZone(null);
+    showToast('Salon bilgileri güncellendi.');
   };
 
   const handleDeleteZone = (zoneId: string, zoneName: string) => {
     const zoneTables = tables.filter((t) => t.zoneId === zoneId);
     if (zoneTables.length > 0) {
-      alert(`"${zoneName}" salonunda ${zoneTables.length} adet masa tanımlı. Bölgeyi silmek için önce bu salondaki masaları siliniz.`);
+      setDeleteConfirm({
+        isOpen: true,
+        type: 'zone',
+        id: zoneId,
+        title: 'Salon Silinemez',
+        message: `"${zoneName}" salonunda kayıtlı ${zoneTables.length} adet masa bulunmaktadır.`,
+        warning: 'Salonu silebilmek için önce bu salondaki masaları başka salona taşımalı veya silmelisiniz.',
+        confirmText: 'Tamam',
+        onConfirm: () => {},
+      });
       return;
     }
-    if (confirm(`"${zoneName}" salon/bölgesini silmek istediğinize emin misiniz?`)) {
-      onUpdateZones(zones.filter((z) => z.id !== zoneId));
-    }
+
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'zone',
+      id: zoneId,
+      title: 'Salonu Sil',
+      message: `"${zoneName}" salon/bölgesini silmek istediğinize emin misiniz?`,
+      confirmText: 'Evet, Salonu Sil',
+      onConfirm: () => {
+        onUpdateZones(zones.filter((z) => z.id !== zoneId));
+        showToast(`"${zoneName}" salonu silindi.`);
+      },
+    });
   };
 
   const handleAddTableToZone = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canAddTable) {
-      alert('Masa ekleme yetkiniz bulunmamaktadır.');
+      showToast('Masa ekleme yetkiniz bulunmamaktadır.');
       return;
     }
     if (!addTableZoneId || !addTableNum.trim()) return;
@@ -674,17 +861,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAddTableZoneId(null);
     setAddTableNum('');
     setAddTableCap('4');
+    showToast(`Masa "${newTable.number}" başarıyla eklendi.`);
   };
 
   const handleDeleteTable = (tblId: string, tblNum: string) => {
     const tbl = tables.find((t) => t.id === tblId);
     if (tbl?.status === 'occupied' || tbl?.status === 'bill_requested') {
-      alert(`"${tblNum}" masasında açık adisyon bulunmaktadır. Silinemez.`);
+      setDeleteConfirm({
+        isOpen: true,
+        type: 'table',
+        id: tblId,
+        title: 'Masa Silinemez',
+        message: `"${tblNum}" masasında şu anda açık bir adisyon bulunmaktadır.`,
+        warning: 'Lütfen önce masanın hesabını kapatınız veya masayı boşaltınız.',
+        confirmText: 'Tamam',
+        onConfirm: () => {},
+      });
       return;
     }
-    if (confirm(`"${tblNum}" masasını silmek istediğinize emin misiniz?`)) {
-      onUpdateTables(tables.filter((t) => t.id !== tblId));
-    }
+
+    setDeleteConfirm({
+      isOpen: true,
+      type: 'table',
+      id: tblId,
+      title: 'Masayı Sil',
+      message: `"${tblNum}" masasını silmek istediğinize emin misiniz?`,
+      confirmText: 'Evet, Masayı Sil',
+      onConfirm: () => {
+        onUpdateTables(tables.filter((t) => t.id !== tblId));
+        showToast(`Masa "${tblNum}" silindi.`);
+      },
+    });
   };
 
   return (
@@ -1246,6 +1453,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="p-3 text-center">Ödeme Şekli</th>
                     <th className="p-3">Ödeyen / Sorumlu</th>
                     <th className="p-3">Açıklama / Not</th>
+                    <th className="p-3 text-right">İşlemler</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
@@ -1284,11 +1492,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
                         <td className="p-3 text-stone-700 dark:text-stone-300 font-medium">{exp.paidByName}</td>
                         <td className="p-3 text-stone-500 italic">{exp.notes || '-'}</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditingExpenseInvoice(exp)}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
+                              title="Faturayı Düzenle"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteExpense(exp)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                              title="Faturayı Sil"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="p-6 text-center text-stone-500 italic">
+                      <td colSpan={10} className="p-6 text-center text-stone-500 italic">
                         Henüz ödenmiş bir işletme fatura / gider kaydı bulunmamaktadır.
                       </td>
                     </tr>
@@ -1301,7 +1529,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <td className="p-3 text-right font-black text-rose-600 dark:text-rose-400 text-sm">
                         {formatCurrency(expenseInvoices.reduce((sum, e) => sum + (e.amount || 0), 0), settings.currencySymbol)}
                       </td>
-                      <td colSpan={4}></td>
+                      <td colSpan={5}></td>
                     </tr>
                   </tfoot>
                 )}
@@ -1340,6 +1568,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="p-3 text-right">Toplam Fiş Tutarı</th>
                     <th className="p-3 text-center">Ödeme Şekli</th>
                     <th className="p-3">Giriş Yapan</th>
+                    <th className="p-3 text-right">İşlemler</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
@@ -1371,11 +1600,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
                         </td>
                         <td className="p-3 text-stone-700 dark:text-stone-300">{inv.createdByName}</td>
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setEditingPurchaseInvoice(inv)}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
+                              title="Fişi Düzenle"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePurchase(inv)}
+                              className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                              title="Fişi Sil"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="p-6 text-center text-stone-500 italic">
+                      <td colSpan={10} className="p-6 text-center text-stone-500 italic">
                         Henüz kayıtlı bir mal alım fişi bulunmamaktadır.
                       </td>
                     </tr>
@@ -1388,7 +1637,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <td className="p-3 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm">
                         {formatCurrency(purchaseInvoices.reduce((sum, p) => sum + (p.totalAmount || 0), 0), settings.currencySymbol)}
                       </td>
-                      <td colSpan={2}></td>
+                      <td colSpan={3}></td>
                     </tr>
                   </tfoot>
                 )}
@@ -1494,12 +1743,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`${item.name} ürününü silmek istediğinize emin misiniz?`)) {
-                                onUpdateMenuItems(menuItems.filter((m) => m.id !== item.id));
-                              }
-                            }}
-                            className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+                            onClick={() => handleDeleteMenuItem(item)}
+                            className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
                             title="Ürünü Sil"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1655,12 +1900,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm(`${stock.name} hammaddesini silmek istediğinize emin misiniz?`)) {
-                                onUpdateStockItems(stockItems.filter((s) => s.id !== stock.id));
-                              }
-                            }}
-                            className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+                            onClick={() => handleDeleteStockItem(stock)}
+                            className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
                             title="Hammaddeyi Sil"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1679,48 +1920,377 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* TAB 4: ORDER HISTORY */}
       {activeTab === 'history' && (
         <div className="space-y-6">
-          <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100">Kapanan Adisyon Geçmişi</h3>
+          {/* Header & Metrics */}
+          <div className="flex items-center justify-between flex-wrap gap-4 bg-white dark:bg-stone-900 p-5 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs">
+            <div>
+              <h3 className="text-lg font-extrabold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <History className="w-5 h-5 text-amber-500" />
+                <span>Geçmiş Adisyonlar ve Hesap Kayıtları</span>
+              </h3>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Kapanan hesaplar, tahsil edilen adisyonlar ve borç/veresiye kapatma kayıtları
+              </p>
+            </div>
 
+            <div className="flex items-center gap-3">
+              <div className="bg-stone-100 dark:bg-stone-800/80 px-3.5 py-2 rounded-2xl border border-stone-200 dark:border-stone-700/60 text-right">
+                <div className="text-[10px] uppercase font-bold text-stone-400">Listelenen Kayıt</div>
+                <div className="text-base font-black text-stone-900 dark:text-stone-100">
+                  {orders.filter((o) => {
+                    if (historyStatusFilter === 'closed' && o.status !== 'closed') return false;
+                    if (historyStatusFilter === 'unpaid_debt' && o.status !== 'unpaid_debt') return false;
+                    if (historyStatusFilter === 'open' && o.status !== 'open') return false;
+                    if (historySearchQuery.trim()) {
+                      const q = historySearchQuery.toLowerCase().trim();
+                      const matchId = o.id.toLowerCase().includes(q);
+                      const matchTable = o.tableName.toLowerCase().includes(q);
+                      const matchZone = o.zoneName.toLowerCase().includes(q);
+                      const matchWaiter = o.waiterName.toLowerCase().includes(q);
+                      const matchItem = o.items.some((i) => i.name.toLowerCase().includes(q));
+                      if (!matchId && !matchTable && !matchZone && !matchWaiter && !matchItem) return false;
+                    }
+                    if (historyDateFilter !== 'all') {
+                      const orderDateStr = (o.closedAt || o.createdAt).slice(0, 10);
+                      const todayStr = new Date().toISOString().slice(0, 10);
+                      if (historyDateFilter === 'today') {
+                        if (orderDateStr !== todayStr) return false;
+                      } else if (historyDateFilter === 'yesterday') {
+                        const yDate = new Date();
+                        yDate.setDate(yDate.getDate() - 1);
+                        if (orderDateStr !== yDate.toISOString().slice(0, 10)) return false;
+                      } else if (historyDateFilter === 'week') {
+                        const weekAgo = new Date();
+                        weekAgo.setDate(weekAgo.getDate() - 7);
+                        if (new Date(o.closedAt || o.createdAt) < weekAgo) return false;
+                      }
+                    }
+                    return true;
+                  }).length} Adet
+                </div>
+              </div>
+
+              <div className="bg-emerald-500/10 dark:bg-emerald-950/40 px-4 py-2 rounded-2xl border border-emerald-500/20 text-right">
+                <div className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Toplam Tutar</div>
+                <div className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                  {formatCurrency(
+                    orders
+                      .filter((o) => {
+                        if (historyStatusFilter === 'closed' && o.status !== 'closed') return false;
+                        if (historyStatusFilter === 'unpaid_debt' && o.status !== 'unpaid_debt') return false;
+                        if (historyStatusFilter === 'open' && o.status !== 'open') return false;
+                        if (historySearchQuery.trim()) {
+                          const q = historySearchQuery.toLowerCase().trim();
+                          const matchId = o.id.toLowerCase().includes(q);
+                          const matchTable = o.tableName.toLowerCase().includes(q);
+                          const matchZone = o.zoneName.toLowerCase().includes(q);
+                          const matchWaiter = o.waiterName.toLowerCase().includes(q);
+                          const matchItem = o.items.some((i) => i.name.toLowerCase().includes(q));
+                          if (!matchId && !matchTable && !matchZone && !matchWaiter && !matchItem) return false;
+                        }
+                        if (historyDateFilter !== 'all') {
+                          const orderDateStr = (o.closedAt || o.createdAt).slice(0, 10);
+                          const todayStr = new Date().toISOString().slice(0, 10);
+                          if (historyDateFilter === 'today') {
+                            if (orderDateStr !== todayStr) return false;
+                          } else if (historyDateFilter === 'yesterday') {
+                            const yDate = new Date();
+                            yDate.setDate(yDate.getDate() - 1);
+                            if (orderDateStr !== yDate.toISOString().slice(0, 10)) return false;
+                          } else if (historyDateFilter === 'week') {
+                            const weekAgo = new Date();
+                            weekAgo.setDate(weekAgo.getDate() - 7);
+                            if (new Date(o.closedAt || o.createdAt) < weekAgo) return false;
+                          }
+                        }
+                        return true;
+                      })
+                      .reduce((sum, o) => sum + o.totalAmount, 0),
+                    settings.currencySymbol
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Filters Bar: Search, Status Tabs, and Date Filter */}
+          <div className="bg-white dark:bg-stone-900 p-4 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Search Bar */}
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="text"
+                  placeholder="Adisyon No, Masa, Garson veya Ürün Ara..."
+                  value={historySearchQuery}
+                  onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-2xl text-xs font-semibold text-stone-900 dark:text-stone-100 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                />
+                {historySearchQuery && (
+                  <button
+                    onClick={() => setHistorySearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 p-0.5 rounded-full"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Segmented Buttons */}
+              <div className="bg-stone-100 dark:bg-stone-800 p-1 rounded-2xl flex items-center gap-1 text-xs font-bold">
+                <button
+                  onClick={() => setHistoryStatusFilter('all')}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    historyStatusFilter === 'all'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                  }`}
+                >
+                  Tümü ({orders.length})
+                </button>
+                <button
+                  onClick={() => setHistoryStatusFilter('closed')}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    historyStatusFilter === 'closed'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                  }`}
+                >
+                  Ödenenler ({orders.filter((o) => o.status === 'closed').length})
+                </button>
+                <button
+                  onClick={() => setHistoryStatusFilter('unpaid_debt')}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    historyStatusFilter === 'unpaid_debt'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                  }`}
+                >
+                  Ödemeden Gitti ({orders.filter((o) => o.status === 'unpaid_debt').length})
+                </button>
+                <button
+                  onClick={() => setHistoryStatusFilter('open')}
+                  className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                    historyStatusFilter === 'open'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                  }`}
+                >
+                  Açık Masalar ({orders.filter((o) => o.status === 'open').length})
+                </button>
+              </div>
+
+              {/* Date Filter Dropdown */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 px-3 py-2 rounded-2xl text-xs font-semibold">
+                  <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                  <select
+                    value={historyDateFilter}
+                    onChange={(e: any) => setHistoryDateFilter(e.target.value)}
+                    className="bg-transparent text-stone-800 dark:text-stone-200 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">Tüm Tarihler</option>
+                    <option value="today">Bugün</option>
+                    <option value="yesterday">Dün</option>
+                    <option value="week">Son 7 Gün</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Orders Table */}
           <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 overflow-hidden shadow-2xs">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-stone-50 dark:bg-stone-800/80 text-stone-500 dark:text-stone-400 text-xs font-semibold uppercase">
-                <tr>
-                  <th className="p-4">Adisyon No</th>
-                  <th className="p-4">Masa</th>
-                  <th className="p-4">Garson</th>
-                  <th className="p-4">Kapanış Saati</th>
-                  <th className="p-4">Ödeme Türü</th>
-                  <th className="p-4">Tutar</th>
-                  <th className="p-4 text-right">Yazdır</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
-                {closedOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/50">
-                    <td className="p-4 font-mono font-bold text-amber-600">{ord.id}</td>
-                    <td className="p-4 font-semibold">{ord.tableName} ({ord.zoneName})</td>
-                    <td className="p-4 text-stone-500">{ord.waiterName}</td>
-                    <td className="p-4 text-stone-500">{formatTime(ord.closedAt || ord.createdAt)}</td>
-                    <td className="p-4">
-                      <span className="text-xs px-2.5 py-1 rounded-full bg-stone-100 dark:bg-stone-800 font-bold uppercase">
-                        {ord.paymentType || 'Nakit'}
-                      </span>
-                    </td>
-                    <td className="p-4 font-black text-emerald-600 dark:text-emerald-400">
-                      {formatCurrency(ord.totalAmount, settings.currencySymbol)}
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={() => onOpenPrintTicket(ord)}
-                        className="p-2 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl"
-                      >
-                        <Printer className="w-4 h-4" />
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-stone-100 dark:bg-stone-800/80 text-stone-700 dark:text-stone-300 font-extrabold uppercase border-b border-stone-200 dark:border-stone-700">
+                  <tr>
+                    <th className="p-3.5">Adisyon No</th>
+                    <th className="p-3.5">Masa & Salon</th>
+                    <th className="p-3.5">Garson</th>
+                    <th className="p-3.5 text-center">Tarih / Saat</th>
+                    <th className="p-3.5 text-center">İçerik</th>
+                    <th className="p-3.5 text-center">Durum</th>
+                    <th className="p-3.5 text-center">Ödeme Yöntemi</th>
+                    <th className="p-3.5 text-right">Tutar</th>
+                    <th className="p-3.5 text-right">İşlemler</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
+                  {orders
+                    .filter((o) => {
+                      if (historyStatusFilter === 'closed' && o.status !== 'closed') return false;
+                      if (historyStatusFilter === 'unpaid_debt' && o.status !== 'unpaid_debt') return false;
+                      if (historyStatusFilter === 'open' && o.status !== 'open') return false;
+                      if (historySearchQuery.trim()) {
+                        const q = historySearchQuery.toLowerCase().trim();
+                        const matchId = o.id.toLowerCase().includes(q);
+                        const matchTable = o.tableName.toLowerCase().includes(q);
+                        const matchZone = o.zoneName.toLowerCase().includes(q);
+                        const matchWaiter = o.waiterName.toLowerCase().includes(q);
+                        const matchItem = o.items.some((i) => i.name.toLowerCase().includes(q));
+                        if (!matchId && !matchTable && !matchZone && !matchWaiter && !matchItem) return false;
+                      }
+                      if (historyDateFilter !== 'all') {
+                        const orderDateStr = (o.closedAt || o.createdAt).slice(0, 10);
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        if (historyDateFilter === 'today') {
+                          if (orderDateStr !== todayStr) return false;
+                        } else if (historyDateFilter === 'yesterday') {
+                          const yDate = new Date();
+                          yDate.setDate(yDate.getDate() - 1);
+                          if (orderDateStr !== yDate.toISOString().slice(0, 10)) return false;
+                        } else if (historyDateFilter === 'week') {
+                          const weekAgo = new Date();
+                          weekAgo.setDate(weekAgo.getDate() - 7);
+                          if (new Date(o.closedAt || o.createdAt) < weekAgo) return false;
+                        }
+                      }
+                      return true;
+                    })
+                    .map((ord) => {
+                      const totalItemCount = ord.items.reduce((s, i) => s + i.quantity, 0);
+                      return (
+                        <tr key={ord.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors">
+                          <td className="p-3.5 font-mono font-bold text-amber-600 dark:text-amber-400">
+                            {ord.id}
+                          </td>
+                          <td className="p-3.5">
+                            <div className="font-extrabold text-stone-900 dark:text-stone-100">{ord.tableName}</div>
+                            <div className="text-[10px] text-stone-400">{ord.zoneName}</div>
+                          </td>
+                          <td className="p-3.5 font-medium text-stone-700 dark:text-stone-300">
+                            {ord.waiterName}
+                          </td>
+                          <td className="p-3.5 text-center text-stone-500 font-medium">
+                            <div>{formatTime(ord.closedAt || ord.createdAt)}</div>
+                            <div className="text-[10px] text-stone-400">{formatDate(ord.closedAt || ord.createdAt)}</div>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <span className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 font-semibold text-stone-600 dark:text-stone-300 text-[11px]">
+                              {totalItemCount} Kalem
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-center">
+                            {ord.status === 'closed' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Ödendi (Kapalı)</span>
+                              </span>
+                            ) : ord.status === 'unpaid_debt' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Ödemeden Gitti (Borç)</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                                <Clock className="w-3 h-3" />
+                                <span>Açık Masa</span>
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            {ord.paymentType === 'nakit' ? (
+                              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-2 py-0.5 rounded text-[10px] border border-emerald-200">Nakit</span>
+                            ) : ord.paymentType === 'kredi_karti' ? (
+                              <span className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold px-2 py-0.5 rounded text-[10px] border border-amber-200">POS / Kredi Kartı</span>
+                            ) : ord.paymentType === 'havale' ? (
+                              <span className="bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-200">Havale / EFT</span>
+                            ) : (
+                              <span className="text-stone-500 font-semibold">{ord.paymentType || '-'}</span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                            {formatCurrency(ord.totalAmount, settings.currencySymbol)}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setViewingOrder(ord)}
+                                className="p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                                title="Adisyon Detaylarını İncele"
+                              >
+                                <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onOpenPrintTicket(ord)}
+                                className="p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                                title="Yeniden Yazdır"
+                              >
+                                <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOrder(ord)}
+                                className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                title="Adisyonu Sil"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+
+              {orders.filter((o) => {
+                if (historyStatusFilter === 'closed' && o.status !== 'closed') return false;
+                if (historyStatusFilter === 'unpaid_debt' && o.status !== 'unpaid_debt') return false;
+                if (historyStatusFilter === 'open' && o.status !== 'open') return false;
+                if (historySearchQuery.trim()) {
+                  const q = historySearchQuery.toLowerCase().trim();
+                  const matchId = o.id.toLowerCase().includes(q);
+                  const matchTable = o.tableName.toLowerCase().includes(q);
+                  const matchZone = o.zoneName.toLowerCase().includes(q);
+                  const matchWaiter = o.waiterName.toLowerCase().includes(q);
+                  const matchItem = o.items.some((i) => i.name.toLowerCase().includes(q));
+                  if (!matchId && !matchTable && !matchZone && !matchWaiter && !matchItem) return false;
+                }
+                if (historyDateFilter !== 'all') {
+                  const orderDateStr = (o.closedAt || o.createdAt).slice(0, 10);
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  if (historyDateFilter === 'today') {
+                    if (orderDateStr !== todayStr) return false;
+                  } else if (historyDateFilter === 'yesterday') {
+                    const yDate = new Date();
+                    yDate.setDate(yDate.getDate() - 1);
+                    if (orderDateStr !== yDate.toISOString().slice(0, 10)) return false;
+                  } else if (historyDateFilter === 'week') {
+                    const weekAgo = new Date();
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    if (new Date(o.closedAt || o.createdAt) < weekAgo) return false;
+                  }
+                }
+                return true;
+              }).length === 0 && (
+                <div className="p-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-400 flex items-center justify-center mx-auto">
+                    <History className="w-6 h-6" />
+                  </div>
+                  <div className="font-bold text-stone-700 dark:text-stone-300">
+                    Aramanıza Uygun Adisyon Bulunamadı
+                  </div>
+                  <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                    Arama kriterlerinizi veya tarih / durum filtrelerini değiştirerek tekrar deneyebilirsiniz.
+                  </p>
+                  {(historySearchQuery || historyStatusFilter !== 'all' || historyDateFilter !== 'all') && (
+                    <button
+                      onClick={() => {
+                        setHistorySearchQuery('');
+                        setHistoryStatusFilter('all');
+                        setHistoryDateFilter('all');
+                      }}
+                      className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs"
+                    >
+                      Filtreleri Temizle
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -3677,6 +4247,504 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-stone-900 max-w-md w-full rounded-3xl p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-500/10 text-rose-500 rounded-2xl">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-stone-900 dark:text-stone-100">
+                  {deleteConfirm.title}
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Bu işlem geri alınamaz.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm text-stone-700 dark:text-stone-300 leading-relaxed bg-stone-50 dark:bg-stone-800/50 p-4 rounded-2xl border border-stone-200 dark:border-stone-800">
+                {deleteConfirm.message}
+              </p>
+              {deleteConfirm.warning && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 rounded-xl text-xs flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <span>{deleteConfirm.warning}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteConfirm.onConfirm();
+                  setDeleteConfirm(null);
+                }}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                {deleteConfirm.confirmText || 'Evet, Sil'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Expense Invoice Modal */}
+      {editingExpenseInvoice && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-stone-900 max-w-lg w-full rounded-3xl p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 pb-3">
+              <h3 className="font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-500" />
+                <span>Gider Faturasını Düzenle</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingExpenseInvoice(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedExpense} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                  Fatura / Gider Başlığı
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingExpenseInvoice.title}
+                  onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, title: e.target.value })}
+                  className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Kategori
+                  </label>
+                  <select
+                    value={editingExpenseInvoice.category}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, category: e.target.value as any })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-stone-100"
+                  >
+                    <option value="elektrik">Elektrik</option>
+                    <option value="su">Su</option>
+                    <option value="dogalgaz">Doğalgaz</option>
+                    <option value="internet">İnternet / Telefon</option>
+                    <option value="kira">Kira</option>
+                    <option value="personel">Personel Maaş / Avans</option>
+                    <option value="temizlik">Temizlik & Hijyen</option>
+                    <option value="tamirat">Bakım & Onarım</option>
+                    <option value="diger">Diğer İşletme Gideri</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Fatura / Abone No
+                  </label>
+                  <input
+                    type="text"
+                    value={editingExpenseInvoice.invoiceNo || ''}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, invoiceNo: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Ödenen Tutar ({settings.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingExpenseInvoice.amount}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, amount: Number(e.target.value) || 0 })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-rose-600 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Ödeme Tarihi
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editingExpenseInvoice.date}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, date: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Ödeme Şekli
+                  </label>
+                  <select
+                    value={editingExpenseInvoice.paymentType}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, paymentType: e.target.value as any })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-stone-100"
+                  >
+                    <option value="nakit">Nakit Kasa</option>
+                    <option value="kredi_karti">Banka / Kredi Kartı</option>
+                    <option value="havale">Banka Havalesi / EFT</option>
+                    <option value="veresiye">Veresiye / Açık Hesap</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Ödeyen / İşlemi Yapan
+                  </label>
+                  <input
+                    type="text"
+                    value={editingExpenseInvoice.paidByName || ''}
+                    onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, paidByName: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                  Not / Açıklama
+                </label>
+                <input
+                  type="text"
+                  value={editingExpenseInvoice.notes || ''}
+                  onChange={(e) => setEditingExpenseInvoice({ ...editingExpenseInvoice, notes: e.target.value })}
+                  placeholder="İsteğe bağlı not..."
+                  className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingExpenseInvoice(null)}
+                  className="px-4 py-2 rounded-xl font-bold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Değişiklikleri Kaydet</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Purchase Invoice Modal */}
+      {editingPurchaseInvoice && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-stone-900 max-w-lg w-full rounded-3xl p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 pb-3">
+              <h3 className="font-bold text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-500" />
+                <span>Mal Alım Fişini Düzenle</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingPurchaseInvoice(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedPurchase} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Tedarikçi / Firma Adı
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPurchaseInvoice.supplierName}
+                    onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, supplierName: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Fiş / Fatura No
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPurchaseInvoice.invoiceNo}
+                    onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, invoiceNo: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono font-bold text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                  Alınan Hammadde / Malzeme Adı
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingPurchaseInvoice.stockItemName}
+                  onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, stockItemName: e.target.value })}
+                  className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Gelen Miktar
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingPurchaseInvoice.quantity}
+                    onChange={(e) => {
+                      const qty = Number(e.target.value) || 0;
+                      const tot = qty * (editingPurchaseInvoice.unitPrice || 0);
+                      setEditingPurchaseInvoice({
+                        ...editingPurchaseInvoice,
+                        quantity: qty,
+                        totalAmount: Number(tot.toFixed(2)),
+                      });
+                    }}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Birim
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPurchaseInvoice.unit}
+                    onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, unit: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Birim Alış Fiyatı ({settings.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingPurchaseInvoice.unitPrice}
+                    onChange={(e) => {
+                      const price = Number(e.target.value) || 0;
+                      const tot = (editingPurchaseInvoice.quantity || 0) * price;
+                      setEditingPurchaseInvoice({
+                        ...editingPurchaseInvoice,
+                        unitPrice: price,
+                        totalAmount: Number(tot.toFixed(2)),
+                      });
+                    }}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Toplam Fiş Tutarı ({settings.currencySymbol})
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editingPurchaseInvoice.totalAmount}
+                    onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, totalAmount: Number(e.target.value) || 0 })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-black text-emerald-600 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                    Ödeme Şekli
+                  </label>
+                  <select
+                    value={editingPurchaseInvoice.paymentType}
+                    onChange={(e) => setEditingPurchaseInvoice({ ...editingPurchaseInvoice, paymentType: e.target.value as any })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-stone-100"
+                  >
+                    <option value="nakit">Nakit Kasa</option>
+                    <option value="kredi_karti">Banka / Kredi Kartı</option>
+                    <option value="havale">Banka Havalesi / EFT</option>
+                    <option value="veresiye">Veresiye / Açık Hesap</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200 dark:border-stone-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingPurchaseInvoice(null)}
+                  className="px-4 py-2 rounded-xl font-bold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
+                >
+                  İptal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Değişiklikleri Kaydet</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Viewing Order Detail Modal (for Geçmiş Adisyonlar) */}
+      {viewingOrder && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-stone-900 max-w-lg w-full rounded-3xl p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 pb-3">
+              <div>
+                <h3 className="font-black text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                  <span>Adisyon #{viewingOrder.id}</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                    viewingOrder.status === 'closed'
+                      ? 'bg-emerald-500/10 text-emerald-500'
+                      : viewingOrder.status === 'unpaid_debt'
+                      ? 'bg-rose-500/10 text-rose-500'
+                      : 'bg-amber-500/10 text-amber-500'
+                  }`}>
+                    {viewingOrder.status === 'closed' ? 'Ödendi & Kapandı' : viewingOrder.status === 'unpaid_debt' ? 'Borç / Veresiye' : 'Açık'}
+                  </span>
+                </h3>
+                <p className="text-xs text-stone-500 mt-0.5 font-medium">
+                  {viewingOrder.tableName} ({viewingOrder.zoneName}) • Garson: {viewingOrder.waiterName}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingOrder(null)}
+                className="text-stone-400 hover:text-stone-600 text-sm font-bold p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs max-h-80 overflow-y-auto">
+              <table className="w-full text-left">
+                <thead className="bg-stone-50 dark:bg-stone-800 text-[10px] uppercase font-bold text-stone-500">
+                  <tr>
+                    <th className="p-2">Ürün</th>
+                    <th className="p-2 text-center">Adet</th>
+                    <th className="p-2 text-right">Birim</th>
+                    <th className="p-2 text-right">Tutar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
+                  {viewingOrder.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td className="p-2">
+                        <span className="font-bold text-stone-900 dark:text-stone-100">{item.name}</span>
+                        {item.note && <span className="text-[10px] text-stone-400 block italic">{item.note}</span>}
+                      </td>
+                      <td className="p-2 text-center font-bold">{item.quantity}</td>
+                      <td className="p-2 text-right text-stone-500">{formatCurrency(item.price, settings.currencySymbol)}</td>
+                      <td className="p-2 text-right font-bold text-stone-900 dark:text-stone-100">
+                        {formatCurrency(item.price * item.quantity, settings.currencySymbol)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="bg-stone-50 dark:bg-stone-800/60 p-3 rounded-2xl space-y-1.5 text-xs">
+                <div className="flex justify-between text-stone-500">
+                  <span>Ara Toplam:</span>
+                  <span className="font-medium">{formatCurrency(viewingOrder.subtotal, settings.currencySymbol)}</span>
+                </div>
+                {viewingOrder.discountPercent ? (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>İndirim (%{viewingOrder.discountPercent}):</span>
+                    <span>-{formatCurrency(viewingOrder.discountAmount || (viewingOrder.subtotal * viewingOrder.discountPercent) / 100, settings.currencySymbol)}</span>
+                  </div>
+                ) : null}
+                <div className="flex justify-between text-sm font-black text-stone-900 dark:text-stone-100 pt-1.5 border-t border-stone-200 dark:border-stone-700">
+                  <span>Genel Toplam:</span>
+                  <span className="text-amber-600 dark:text-amber-400">{formatCurrency(viewingOrder.totalAmount, settings.currencySymbol)}</span>
+                </div>
+                {viewingOrder.paymentType && (
+                  <div className="flex justify-between text-[11px] text-stone-400 pt-1">
+                    <span>Ödeme Şekli:</span>
+                    <span className="font-bold uppercase text-stone-700 dark:text-stone-300">{viewingOrder.paymentType}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-stone-200 dark:border-stone-800">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenPrintTicket(viewingOrder);
+                }}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Yeniden Fiş Yazdır</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingOrder(null)}
+                className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold hover:bg-stone-200 cursor-pointer"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 text-xs font-bold animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
         </div>
       )}
 
