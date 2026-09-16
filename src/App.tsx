@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, CreditCard, Banknote, X } from 'lucide-react';
+import { CheckCircle2, CreditCard, Banknote, X, Printer } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification } from './types';
 import { initialOrders } from './data/initialData';
@@ -1001,6 +1001,7 @@ export default function App() {
           settings={settings}
           onClose={() => setShowUnpaidDebtsModal(false)}
           onSelectDebtForPayment={(ord) => setDebtPaymentModalOrder(ord)}
+          onOpenPrintTicket={(ord) => setPrintingOrder(ord)}
         />
       )}
 
@@ -1065,9 +1066,18 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setDebtPaymentModalOrder(null)}
-                className="w-1/3 py-3 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold text-xs rounded-xl"
+                className="py-3 px-3.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold text-xs rounded-xl hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"
               >
                 İptal
+              </button>
+              <button
+                type="button"
+                onClick={() => setPrintingOrder(debtPaymentModalOrder)}
+                className="py-3 px-3.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                title="Borçlu Müşteri Fişini Yazdır"
+              >
+                <Printer className="w-4 h-4 text-amber-500" />
+                <span>Yazdır</span>
               </button>
               <button
                 type="button"
@@ -1078,7 +1088,7 @@ export default function App() {
                   setToastMessage(`"${debtPaymentModalOrder.customerNotes}" müşteri borcu tahsil edildi!`);
                   setTimeout(() => setToastMessage(null), 3000);
                 }}
-                className="w-2/3 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2"
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-colors"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Ödemeyi Tahsil Et</span>

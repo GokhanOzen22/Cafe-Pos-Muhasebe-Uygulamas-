@@ -145,6 +145,22 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
             {order.waiterName}
           </span>
         </div>
+        {order.customerNotes && (
+          <div className="flex justify-between items-center">
+            <span className="font-bold">Müşteri / Not:</span>
+            <span className="font-black" style={{ fontWeight: 900 }}>
+              {order.customerNotes}
+            </span>
+          </div>
+        )}
+        {order.status === 'unpaid_debt' && (
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-black">Hesap Durumu:</span>
+            <span className="font-black px-1.5 py-0.5 border-2 border-black uppercase text-[11px]" style={{ fontWeight: 900 }}>
+              VERESİYE / AÇIK BORÇ
+            </span>
+          </div>
+        )}
       </div>
 
       <div
@@ -274,14 +290,21 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
         </div>
       </div>
 
-      {order.paymentType && (
+      {order.paymentType ? (
         <div
           className="text-center pt-1.5 text-xs font-black uppercase"
           style={{ color: '#000000', fontWeight: 900 }}
         >
           ÖDEME TÜRÜ: {order.paymentType}
         </div>
-      )}
+      ) : order.status === 'unpaid_debt' ? (
+        <div
+          className="text-center pt-1.5 text-xs font-black uppercase"
+          style={{ color: '#000000', fontWeight: 900 }}
+        >
+          DURUM: ÖDENMEDİ (VERESİYE / AÇIK HESAP)
+        </div>
+      ) : null}
 
       <div
         className="my-1.5"

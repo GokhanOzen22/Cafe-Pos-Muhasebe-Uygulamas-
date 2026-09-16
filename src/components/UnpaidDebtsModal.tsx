@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Order, RestaurantSettings } from '../types';
-import { X, Search, CreditCard, Clock, UserX, AlertCircle, ShoppingBag, User, CheckCircle2, DollarSign } from 'lucide-react';
+import { X, Search, CreditCard, Clock, UserX, AlertCircle, ShoppingBag, User, CheckCircle2, DollarSign, Printer } from 'lucide-react';
 import { formatCurrency, formatTime } from '../utils/formatters';
 
 interface UnpaidDebtsModalProps {
@@ -8,6 +8,7 @@ interface UnpaidDebtsModalProps {
   settings: RestaurantSettings;
   onClose: () => void;
   onSelectDebtForPayment: (order: Order) => void;
+  onOpenPrintTicket?: (order: Order) => void;
 }
 
 export const UnpaidDebtsModal: React.FC<UnpaidDebtsModalProps> = ({
@@ -15,6 +16,7 @@ export const UnpaidDebtsModal: React.FC<UnpaidDebtsModalProps> = ({
   settings,
   onClose,
   onSelectDebtForPayment,
+  onOpenPrintTicket,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -120,9 +122,21 @@ export const UnpaidDebtsModal: React.FC<UnpaidDebtsModalProps> = ({
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-900/40 shrink-0">
-                        Açık Borç
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onOpenPrintTicket && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenPrintTicket(debtOrder)}
+                            title="Adisyon Fişini Yazdır"
+                            className="p-1.5 rounded-lg text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer border border-transparent hover:border-stone-200 dark:hover:border-stone-700"
+                          >
+                            <Printer className="w-4 h-4 text-amber-500" />
+                          </button>
+                        )}
+                        <span className="text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 px-2 py-0.5 rounded-full border border-rose-200 dark:border-rose-900/40">
+                          Açık Borç
+                        </span>
+                      </div>
                     </div>
 
                     {/* Order Info & Items */}
@@ -152,7 +166,7 @@ export const UnpaidDebtsModal: React.FC<UnpaidDebtsModalProps> = ({
                   </div>
 
                   {/* Bottom Action Bar */}
-                  <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex items-center justify-between gap-2">
+                  <div className="pt-2 border-t border-stone-100 dark:border-stone-800 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-col">
                       <span className="text-[10px] text-stone-400 font-semibold uppercase">Ödenecek Tutar</span>
                       <span className="text-base font-black text-rose-600 dark:text-rose-400">
@@ -160,14 +174,28 @@ export const UnpaidDebtsModal: React.FC<UnpaidDebtsModalProps> = ({
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => onSelectDebtForPayment(debtOrder)}
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs transition-colors"
-                    >
-                      <CreditCard className="w-4 h-4" />
-                      <span>Ödeme Al (Ödeme Ekranına Git)</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {onOpenPrintTicket && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenPrintTicket(debtOrder)}
+                          title="Borçlu Müşteri Adisyonunu Yazdır"
+                          className="px-3 py-2.5 bg-stone-100 hover:bg-amber-500/10 dark:bg-stone-800 dark:hover:bg-amber-500/20 text-stone-700 dark:text-stone-300 hover:text-amber-700 dark:hover:text-amber-400 font-bold text-xs rounded-xl flex items-center gap-1.5 border border-stone-200 dark:border-stone-700 hover:border-amber-500/30 transition-all cursor-pointer"
+                        >
+                          <Printer className="w-4 h-4 text-amber-500" />
+                          <span>Adisyon Yazdır</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => onSelectDebtForPayment(debtOrder)}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        <span>Ödeme Al (Ödeme Ekranına Git)</span>
+                      </button>
+                    </div>
                   </div>
 
                 </div>
