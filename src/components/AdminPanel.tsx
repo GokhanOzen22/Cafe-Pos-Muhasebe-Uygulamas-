@@ -102,7 +102,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     ? 'settings'
     : 'stock';
 
-  const [activeTab, setActiveTab] = useState<'reports' | 'invoices' | 'menu' | 'stock' | 'users' | 'history' | 'settings' | 'server'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'reports' | 'invoices' | 'menu' | 'stock' | 'tables' | 'users' | 'history' | 'settings' | 'server'>(defaultTab);
 
   // Sub tab states
   const [stockSubTab, setStockSubTab] = useState<'list' | 'box_intake'>('list');
@@ -129,9 +129,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editZoneName, setEditZoneName] = useState<string>('');
   const [editZoneDesc, setEditZoneDesc] = useState<string>('');
 
+  // Table Management State
   const [addTableZoneId, setAddTableZoneId] = useState<string | null>(null);
   const [addTableNum, setAddTableNum] = useState<string>('');
   const [addTableCap, setAddTableCap] = useState<string>('4');
+
+  const [editingTable, setEditingTable] = useState<Table | null>(null);
+  const [editTableNum, setEditTableNum] = useState<string>('');
+  const [editTableCap, setEditTableCap] = useState<string>('4');
+  const [editTableZoneId, setEditTableZoneId] = useState<string>('');
+
+  const [showBulkAddTablesModal, setShowBulkAddTablesModal] = useState<boolean>(false);
+  const [bulkPrefix, setBulkPrefix] = useState<string>('Masa ');
+  const [bulkStartNum, setBulkStartNum] = useState<number>(1);
+  const [bulkCount, setBulkCount] = useState<number>(5);
+  const [bulkZoneId, setBulkZoneId] = useState<string>('');
+  const [bulkCapacity, setBulkCapacity] = useState<number>(4);
+
+  // Table Search and Filtering State
+  const [tableSearchQuery, setTableSearchQuery] = useState<string>('');
+  const [selectedZoneFilter, setSelectedZoneFilter] = useState<string>('all');
+  const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'empty' | 'occupied' | 'bill_requested' | 'reserved'>('all');
 
   // Z-Report, Detailed Report & Invoice Report Modal States
   const [showZReportModal, setShowZReportModal] = useState<boolean>(false);
@@ -813,16 +831,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleDeleteZone = (zoneId: string, zoneName: string) => {
     const zoneTables = tables.filter((t) => t.zoneId === zoneId);
-    if (zoneTables.length > 0) {
+    const occupiedTables = zoneTables.filter(
+      (t) => t.status === 'occupied' || t.status === 'bill_requested'
+    );
+
+    if (occupiedTables.length > 0) {
       setDeleteConfirm({
         isOpen: true,
         type: 'zone',
         id: zoneId,
         title: 'Salon Silinemez',
-        message: `"${zoneName}" salonunda kayıtlı ${zoneTables.length} adet masa bulunmaktadır.`,
-        warning: 'Salonu silebilmek için önce bu salondaki masaları başka salona taşımalı veya silmelisiniz.',
+        message: `"${zoneName}" salonundaki ${occupiedTables.length} masada şu anda açık bir adisyon bulunmaktadır.`,
+        warning: 'Salonu silebilmek için önce açık hesapları kapatmalı veya masaları boşaltmalısınız.',
         confirmText: 'Tamam',
         onConfirm: () => {},
+      });
+      return;
+    }
+
+    if (zoneTables.length > 0) {
+      setDeleteConfirm({
+        isOpen: true,
+        type: 'zone',
+        id: zoneId,
+        title: 'Salonu ve Masalarını Sil',
+        message: `"${zoneName}" salonu ile bu salona ait ${zoneTables.length} adet boş masa silinecektir.`,
+        warning: 'Bu salondaki tüm masa tanımları kaldırılacaktır. Devam etmek istiyor musunuz?',
+        confirmText: 'Evet, Salonu ve Masaları Sil',
+        onConfirm: () => {
+          onUpdateZones(zones.filter((z) => z.id !== zoneId));
+          onUpdateTables(tables.filter((t) => t.zoneId !== zoneId));
+          showToast(`"${zoneName}" salonu ve ${zoneTables.length} masası silindi.`);
+        },
       });
       return;
     }
@@ -847,12 +887,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       showToast('Masa ekleme yetkiniz bulunmamaktadır.');
       return;
     }
-    if (!addTableZoneId || !addTableNum.trim()) return;
+    const targetZoneId = addTableZoneId || zones[0]?.id;
+    if (!targetZoneId || !addTableNum.trim()) {
+      showToast('Lütfen masa numarasını ve geçerli bir salonu seçiniz.');
+      return;
+    }
 
     const newTable: Table = {
       id: 'tbl-' + Date.now(),
       number: addTableNum.trim(),
-      zoneId: addTableZoneId,
+      zoneId: targetZoneId,
       capacity: parseInt(addTableCap) || 4,
       status: 'empty',
     };
@@ -862,6 +906,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setAddTableNum('');
     setAddTableCap('4');
     showToast(`Masa "${newTable.number}" başarıyla eklendi.`);
+  };
+
+  const handleOpenEditTable = (tbl: Table) => {
+    setEditingTable(tbl);
+    setEditTableNum(tbl.number);
+    setEditTableCap(String(tbl.capacity || 4));
+    setEditTableZoneId(tbl.zoneId);
+  };
+
+  const handleSaveEditedTable = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTable || !editTableNum.trim()) return;
+
+    const updatedTables = tables.map((t) =>
+      t.id === editingTable.id
+        ? {
+            ...t,
+            number: editTableNum.trim(),
+            capacity: parseInt(editTableCap) || 4,
+            zoneId: editTableZoneId || t.zoneId,
+          }
+        : t
+    );
+
+    onUpdateTables(updatedTables);
+    setEditingTable(null);
+    showToast(`Masa "${editTableNum.trim()}" güncellendi.`);
+  };
+
+  const handleBulkAddTables = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canAddTable) {
+      showToast('Masa ekleme yetkiniz bulunmamaktadır.');
+      return;
+    }
+    const targetZoneId = bulkZoneId || zones[0]?.id;
+    if (!targetZoneId) {
+      showToast('Lütfen önce bir salon seçiniz veya oluşturunuz.');
+      return;
+    }
+
+    const count = Math.min(Math.max(Number(bulkCount) || 1, 1), 50);
+    const start = Number(bulkStartNum) || 1;
+    const prefix = bulkPrefix;
+    const cap = Number(bulkCapacity) || 4;
+
+    const newCreatedTables: Table[] = [];
+    for (let i = 0; i < count; i++) {
+      const numVal = start + i;
+      newCreatedTables.push({
+        id: 'tbl-' + Date.now() + '-' + i,
+        number: `${prefix}${numVal}`.trim(),
+        zoneId: targetZoneId,
+        capacity: cap,
+        status: 'empty',
+      });
+    }
+
+    onUpdateTables([...tables, ...newCreatedTables]);
+    setShowBulkAddTablesModal(false);
+    showToast(`${newCreatedTables.length} adet masa başarıyla eklendi.`);
   };
 
   const handleDeleteTable = (tblId: string, tblNum: string) => {
@@ -953,6 +1058,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             >
               <Package className="w-4 h-4" />
               <span>Stok & Hammadde ({stockItems.length})</span>
+            </button>
+          )}
+
+          {canAddTable && (
+            <button
+              onClick={() => setActiveTab('tables')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                activeTab === 'tables'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
+                  : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span>Salon & Masalar ({zones.length} Salon, {tables.length} Masa)</span>
             </button>
           )}
 
@@ -2614,6 +2733,406 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* TAB: SALON & MASA YÖNETİMİ */}
+      {activeTab === 'tables' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <h3 className="font-extrabold text-xl text-stone-900 dark:text-stone-100">
+                  Salon, Bölge & Masa Yönetimi
+                </h3>
+              </div>
+              <p className="text-xs text-stone-500 dark:text-stone-400 max-w-2xl">
+                Restoranınızın alanlarını (Ana Salon, Bahçe, Teras, VIP vb.) tanımlayın, masa numaraları ve kapasitelerini ekleyin, düzenleyin veya silin.
+              </p>
+            </div>
+
+            <div className="flex items-center flex-wrap gap-2 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowAddZoneModal(true)}
+                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold rounded-xl text-xs transition-colors shadow-xs"
+              >
+                <Building2 className="w-4 h-4 text-amber-500" />
+                <span>+ Yeni Salon/Bölge Ekle</span>
+              </button>
+
+              {canAddTable && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAddTableZoneId(zones[0]?.id || '')}
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold rounded-xl text-xs transition-colors shadow-xs"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Masa Ekle</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkZoneId(zones[0]?.id || '');
+                      setShowBulkAddTablesModal(true);
+                    }}
+                    className="flex-1 md:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+                    title="Aynı anda birden çok masayı sıralı ekleyin"
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>Toplu Masa Ekle</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">Toplam Salon / Alan</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-2xl font-black text-stone-900 dark:text-stone-100">{zones.length}</span>
+                <Building2 className="w-5 h-5 text-amber-500/70" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">Toplam Masa</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-2xl font-black text-stone-900 dark:text-stone-100">{tables.length}</span>
+                <LayoutGrid className="w-5 h-5 text-blue-500/70" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">Boş Masalar</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                  {tables.filter((t) => t.status === 'empty').length}
+                </span>
+                <span className="w-3 h-3 rounded-full bg-emerald-500" />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-4 shadow-2xs">
+              <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block">Dolu / Açık Hesap</span>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                  {tables.filter((t) => t.status === 'occupied' || t.status === 'bill_requested').length}
+                </span>
+                <span className="w-3 h-3 rounded-full bg-rose-500" />
+              </div>
+            </div>
+          </div>
+
+          {/* Search and Filter Controls */}
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl p-3 shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              {/* Search Bar */}
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  type="text"
+                  placeholder="Masa no veya salon ara..."
+                  value={tableSearchQuery}
+                  onChange={(e) => setTableSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+                {tableSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setTableSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center gap-1 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs font-semibold">
+                <span className="text-stone-400 text-[11px] mr-1 hidden md:inline">Durum:</span>
+                {(
+                  [
+                    { id: 'all', label: `Tümü (${tables.length})` },
+                    { id: 'empty', label: `Boş (${tables.filter((t) => t.status === 'empty').length})`, dot: 'bg-emerald-500' },
+                    { id: 'occupied', label: `Dolu (${tables.filter((t) => t.status === 'occupied').length})`, dot: 'bg-rose-500' },
+                    { id: 'bill_requested', label: `Hesap (${tables.filter((t) => t.status === 'bill_requested').length})`, dot: 'bg-amber-500' },
+                    { id: 'reserved', label: `Rezerve (${tables.filter((t) => t.status === 'reserved').length})`, dot: 'bg-purple-500' },
+                  ] as const
+                ).map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setTableStatusFilter(st.id)}
+                    className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      tableStatusFilter === st.id
+                        ? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-950 font-bold'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                    }`}
+                  >
+                    {'dot' in st && <span className={`w-2 h-2 rounded-full ${st.dot}`} />}
+                    <span>{st.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Salon / Zone Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pt-1 border-t border-stone-100 dark:border-stone-800 pb-1">
+              <span className="text-stone-400 text-[11px] font-semibold whitespace-nowrap">Salon Filtresi:</span>
+              <button
+                type="button"
+                onClick={() => setSelectedZoneFilter('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                  selectedZoneFilter === 'all'
+                    ? 'bg-amber-500 text-stone-950 shadow-2xs'
+                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                }`}
+              >
+                Tüm Salonlar ({tables.length})
+              </button>
+              {zones.map((z) => {
+                const count = tables.filter((t) => t.zoneId === z.id).length;
+                return (
+                  <button
+                    key={z.id}
+                    type="button"
+                    onClick={() => setSelectedZoneFilter(z.id)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                      selectedZoneFilter === z.id
+                        ? 'bg-amber-500 text-stone-950 shadow-2xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                    }`}
+                  >
+                    {z.name} ({count})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Zones & Tables List */}
+          {zones.length === 0 ? (
+            <div className="bg-white dark:bg-stone-900 border border-dashed border-stone-300 dark:border-stone-700 rounded-3xl p-12 text-center space-y-4">
+              <div className="w-14 h-14 mx-auto bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center">
+                <Building2 className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-lg text-stone-900 dark:text-stone-100">
+                  Henüz Salon veya Bölge Tanımlanmadı
+                </h4>
+                <p className="text-xs text-stone-500 max-w-md mx-auto">
+                  Masa ekleyebilmek için öncelikle en az bir salon veya bölge (örn: Ana Salon, Bahçe, Teras) oluşturmalısınız.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddZoneModal(true)}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold text-xs rounded-xl shadow-xs inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>İlk Salonu Oluştur</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {zones
+                .filter((z) => selectedZoneFilter === 'all' || z.id === selectedZoneFilter)
+                .map((zone) => {
+                  const allZoneTables = tables.filter((t) => t.zoneId === zone.id);
+                  const filteredZoneTables = allZoneTables.filter((t) => {
+                    const matchesSearch =
+                      !tableSearchQuery.trim() ||
+                      t.number.toLowerCase().includes(tableSearchQuery.trim().toLowerCase()) ||
+                      zone.name.toLowerCase().includes(tableSearchQuery.trim().toLowerCase());
+                    const matchesStatus =
+                      tableStatusFilter === 'all' || t.status === tableStatusFilter;
+                    return matchesSearch && matchesStatus;
+                  });
+
+                  const occupiedCount = allZoneTables.filter(
+                    (t) => t.status === 'occupied' || t.status === 'bill_requested'
+                  ).length;
+                  const emptyCount = allZoneTables.filter((t) => t.status === 'empty').length;
+
+                  return (
+                    <div
+                      key={zone.id}
+                      className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 shadow-2xs space-y-4"
+                    >
+                      {/* Zone Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 dark:border-stone-800 pb-4">
+                        <div>
+                          <div className="flex items-center gap-2.5">
+                            <h4 className="font-extrabold text-lg text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                              <span>{zone.name}</span>
+                            </h4>
+                            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
+                              {allZoneTables.length} Masa
+                            </span>
+                            {occupiedCount > 0 && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                {occupiedCount} Dolu
+                              </span>
+                            )}
+                            {emptyCount > 0 && (
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                {emptyCount} Boş
+                              </span>
+                            )}
+                          </div>
+                          {zone.description && (
+                            <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                              {zone.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Zone Actions */}
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          {canAddTable && (
+                            <button
+                              type="button"
+                              onClick={() => setAddTableZoneId(zone.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs rounded-xl border border-amber-500/30 transition-colors"
+                              title="Bu salona yeni masa ekle"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Masa Ekle</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditZone(zone)}
+                            className="p-1.5 text-stone-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-xl transition-colors"
+                            title="Salon Bilgilerini Düzenle"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteZone(zone.id, zone.name)}
+                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+                            title="Salonu ve Masalarını Sil"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Zone Tables Grid */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {filteredZoneTables.map((tbl) => {
+                          const statusConfig = {
+                            empty: {
+                              bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+                              label: 'Boş',
+                              dot: 'bg-emerald-500',
+                            },
+                            occupied: {
+                              bg: 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20',
+                              label: 'Dolu',
+                              dot: 'bg-rose-500',
+                            },
+                            bill_requested: {
+                              bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+                              label: 'Hesap İstendi',
+                              dot: 'bg-amber-500',
+                            },
+                            reserved: {
+                              bg: 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/20',
+                              label: 'Rezerve',
+                              dot: 'bg-purple-500',
+                            },
+                          }[tbl.status] || {
+                            bg: 'bg-stone-100 text-stone-600 border-stone-200',
+                            label: 'Boş',
+                            dot: 'bg-stone-400',
+                          };
+
+                          return (
+                            <div
+                              key={tbl.id}
+                              className="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 rounded-2xl p-3.5 flex flex-col justify-between gap-3 hover:border-amber-500/40 transition-colors shadow-2xs group"
+                            >
+                              <div className="flex items-start justify-between gap-1">
+                                <div>
+                                  <span className="font-extrabold text-sm text-stone-900 dark:text-stone-100 block">
+                                    {tbl.number}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-[11px] text-stone-500 font-medium mt-0.5">
+                                    <Users className="w-3 h-3 text-stone-400" />
+                                    <span>{tbl.capacity} Kişilik</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditTable(tbl)}
+                                    className="p-1 text-stone-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
+                                    title="Masayı Düzenle"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTable(tbl.id, tbl.number)}
+                                    className="p-1 text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                                    title="Masayı Sil"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-1 border-t border-stone-200/60 dark:border-stone-700/40 text-[10px]">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${statusConfig.bg}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${statusConfig.dot}`} />
+                                  <span>{statusConfig.label}</span>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {filteredZoneTables.length === 0 && (
+                          <div className="col-span-full py-8 text-center text-xs text-stone-400 italic bg-stone-50/50 dark:bg-stone-800/30 rounded-2xl border border-dashed border-stone-200 dark:border-stone-800 space-y-2">
+                            <p>
+                              {allZoneTables.length === 0
+                                ? 'Bu salonda henüz masa eklenmedi.'
+                                : 'Arama veya filtre kriterine uygun masa bulunamadı.'}
+                            </p>
+                            {allZoneTables.length === 0 && canAddTable && (
+                              <button
+                                type="button"
+                                onClick={() => setAddTableZoneId(zone.id)}
+                                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs shadow-xs inline-flex items-center gap-1.5"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>+ Bu Salona İlk Masayı Ekle</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* TAB: USER MANAGEMENT & PERMISSIONS */}
       {activeTab === 'users' && (
         <UserManagement users={users} onUpdateUsers={onUpdateUsers} />
@@ -3261,8 +3780,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
           <form onSubmit={handleAddTableToZone} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
-              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100">
-                Masa Ekle ({zones.find(z => z.id === addTableZoneId)?.name})
+              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-amber-500" />
+                <span>Yeni Masa Ekle</span>
               </h3>
               <button
                 type="button"
@@ -3274,14 +3794,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div>
+              <label className="text-xs font-semibold text-stone-500">Salon / Bölge Seçin:</label>
+              <select
+                required
+                value={addTableZoneId}
+                onChange={(e) => setAddTableZoneId(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100"
+              >
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="text-xs font-semibold text-stone-500">Masa Numarası / Adı:</label>
               <input
                 type="text"
                 required
-                placeholder="Örn: M-12, Teras-3, Bahçe-1..."
+                placeholder="Örn: M-12, Teras-3, Bahçe-1, VIP-2..."
                 value={addTableNum}
                 onChange={(e) => setAddTableNum(e.target.value)}
-                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-bold text-stone-900 dark:text-stone-100"
               />
             </div>
 
@@ -3293,7 +3829,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 value={addTableCap}
                 onChange={(e) => setAddTableCap(e.target.value)}
-                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
               />
             </div>
 
@@ -3310,6 +3846,209 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-sm shadow-xs"
               >
                 Masa Ekle
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Edit Table Modal */}
+      {editingTable && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <form onSubmit={handleSaveEditedTable} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
+              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-500" />
+                <span>Masayı Düzenle ({editingTable.number})</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingTable(null)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500">Ait Olduğu Salon / Bölge:</label>
+              <select
+                required
+                value={editTableZoneId}
+                onChange={(e) => setEditTableZoneId(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100"
+              >
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500">Masa Numarası / Adı:</label>
+              <input
+                type="text"
+                required
+                value={editTableNum}
+                onChange={(e) => setEditTableNum(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-bold text-stone-900 dark:text-stone-100"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500">Kapasite (Kişilik):</label>
+              <input
+                type="number"
+                min="1"
+                required
+                value={editTableCap}
+                onChange={(e) => setEditTableCap(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <button
+                type="button"
+                onClick={() => setEditingTable(null)}
+                className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-sm font-semibold"
+              >
+                İptal
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-sm shadow-xs"
+              >
+                Değişiklikleri Kaydet
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Bulk Add Tables Modal */}
+      {showBulkAddTablesModal && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <form onSubmit={handleBulkAddTables} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
+              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-500" />
+                <span>Hızlı Toplu Masa Ekle</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowBulkAddTablesModal(false)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-stone-500">Eklenecek Salon / Bölge:</label>
+              <select
+                required
+                value={bulkZoneId || zones[0]?.id || ''}
+                onChange={(e) => setBulkZoneId(e.target.value)}
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100"
+              >
+                {zones.map((z) => (
+                  <option key={z.id} value={z.id}>
+                    {z.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-stone-500">Masa Ön Eki:</label>
+                <input
+                  type="text"
+                  value={bulkPrefix}
+                  onChange={(e) => setBulkPrefix(e.target.value)}
+                  placeholder="Örn: Masa , B-, T-"
+                  className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-stone-500">Başlangıç No:</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={bulkStartNum}
+                  onChange={(e) => setBulkStartNum(parseInt(e.target.value) || 1)}
+                  className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-stone-500">Masa Sayısı (Adet):</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  required
+                  value={bulkCount}
+                  onChange={(e) => setBulkCount(parseInt(e.target.value) || 1)}
+                  className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-stone-500">Kişi Kapasitesi:</label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={bulkCapacity}
+                  onChange={(e) => setBulkCapacity(parseInt(e.target.value) || 4)}
+                  className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm text-stone-900 dark:text-stone-100"
+                />
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+              <span className="text-xs font-bold text-amber-700 dark:text-amber-400 block mb-1">
+                Oluşturulacak Masalar Önizleme:
+              </span>
+              <div className="text-xs text-stone-700 dark:text-stone-300 flex flex-wrap gap-1">
+                {Array.from({ length: Math.min(bulkCount, 8) }).map((_, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 bg-white dark:bg-stone-800 rounded-md font-mono text-[11px] border border-stone-200 dark:border-stone-700"
+                  >
+                    {bulkPrefix}
+                    {bulkStartNum + i}
+                  </span>
+                ))}
+                {bulkCount > 8 && (
+                  <span className="text-[11px] text-stone-500 self-center">
+                    ... ve {bulkCount - 8} adet daha
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowBulkAddTablesModal(false)}
+                className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-sm font-semibold"
+              >
+                İptal
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-sm shadow-xs flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                <span>{bulkCount} Masayı Ekle</span>
               </button>
             </div>
           </form>
@@ -4281,20 +5020,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
-              >
-                Vazgeç
-              </button>
+              {deleteConfirm.confirmText !== 'Tamam' && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors cursor-pointer"
+                >
+                  Vazgeç
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   deleteConfirm.onConfirm();
                   setDeleteConfirm(null);
                 }}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  deleteConfirm.confirmText === 'Tamam'
+                    ? 'bg-stone-800 hover:bg-stone-700 text-white'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20'
+                }`}
               >
                 {deleteConfirm.confirmText || 'Evet, Sil'}
               </button>

@@ -132,10 +132,16 @@ export default function App() {
     const pollInterval = setInterval(async () => {
       const serverData = await StorageService.fetchFullDataFromServer();
       if (serverData) {
+        if (serverData.zones) setZones(serverData.zones);
         if (serverData.tables) setTables(serverData.tables);
-        if (serverData.orders) setOrders(serverData.orders);
-        if (serverData.stockItems) setStockItems(serverData.stockItems);
+        if (serverData.categories) setCategories(serverData.categories);
         if (serverData.menuItems) setMenuItems(serverData.menuItems);
+        if (serverData.stockItems) setStockItems(serverData.stockItems);
+        if (serverData.purchaseInvoices) setPurchaseInvoices(serverData.purchaseInvoices);
+        if (serverData.expenseInvoices) setExpenseInvoices(serverData.expenseInvoices);
+        if (serverData.orders) setOrders(serverData.orders);
+        if (serverData.settings) setSettings(serverData.settings);
+        if (serverData.users) setUsers(serverData.users);
         if (serverData.notifications) {
           setNotifications(serverData.notifications);
           // Detect newly arrived unread notifications from kitchen!
@@ -870,16 +876,6 @@ export default function App() {
             currentUser={currentUser}
             unpaidDebtCount={unpaidDebtCount}
             onSelectTable={(tbl) => setSelectedTable(tbl)}
-            onAddTableClick={() => {
-              const canAddTable = currentUser
-                ? currentUser.role === 'admin' || currentUser.isSystemAdmin || !!currentUser.permissions?.canAddTable
-                : true;
-              if (canAddTable) {
-                setShowNewTableModal(true);
-              } else {
-                alert('Masa ekleme yetkiniz bulunmamaktadır.');
-              }
-            }}
             onQuickNewOrder={(tbl) => setSelectedTable(tbl)}
             onOpenUnpaidDebtsModal={() => setShowUnpaidDebtsModal(true)}
           />

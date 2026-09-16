@@ -199,6 +199,8 @@ const initialUsers = [
       canCancelItem: true,
       canTransferTable: true,
       canClosePayment: true,
+      canAddTable: true,
+      canManageInvoices: true,
       canViewReports: true,
       canManageStock: true,
       canManageMenu: true,
@@ -217,7 +219,9 @@ const initialUsers = [
       canApplyDiscount: false,
       canCancelItem: false,
       canTransferTable: true,
-      canClosePayment: true,
+      canClosePayment: false,
+      canAddTable: false,
+      canManageInvoices: false,
       canViewReports: false,
       canManageStock: false,
       canManageMenu: false,
@@ -237,6 +241,8 @@ const initialUsers = [
       canCancelItem: false,
       canTransferTable: false,
       canClosePayment: false,
+      canAddTable: false,
+      canManageInvoices: false,
       canViewReports: false,
       canManageStock: true,
       canManageMenu: false,
@@ -619,9 +625,12 @@ async function startServer() {
     setKV('categories', initialCategories);
     setKV('menu_items', initialMenuItems);
     setKV('stock_items', initialStockItems);
-    setKV('orders', []);
+    setKV('orders', initialOrders);
     setKV('settings', defaultSettings);
     setKV('users', initialUsers);
+    setKV('purchase_invoices', initialPurchaseInvoices);
+    setKV('expense_invoices', initialExpenseInvoices);
+    setKV('kitchen_notifications', []);
 
     addSystemLog({
       userId: req.body.userId || 'admin',

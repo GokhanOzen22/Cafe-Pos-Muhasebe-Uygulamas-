@@ -11,7 +11,7 @@ interface TableGridProps {
   currentUser?: AppUser | null;
   unpaidDebtCount?: number;
   onSelectTable: (table: Table) => void;
-  onAddTableClick: () => void;
+  onAddTableClick?: () => void;
   onQuickNewOrder: (table: Table) => void;
   onOpenUnpaidDebtsModal?: () => void;
 }
@@ -21,20 +21,16 @@ export const TableGrid: React.FC<TableGridProps> = ({
   zones,
   orders,
   settings,
-  currentUser,
+  currentUser: _currentUser,
   unpaidDebtCount = 0,
   onSelectTable,
-  onAddTableClick,
+  onAddTableClick: _onAddTableClick,
   onQuickNewOrder,
   onOpenUnpaidDebtsModal,
 }) => {
   const [selectedZoneId, setSelectedZoneId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<TableStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-
-  const canAddTable = currentUser
-    ? currentUser.role === 'admin' || currentUser.isSystemAdmin || !!currentUser.permissions?.canAddTable
-    : true;
 
   // Helper map for active orders by tableId
   const activeOrdersMap = new Map<string, Order>();
@@ -139,17 +135,6 @@ export const TableGrid: React.FC<TableGridProps> = ({
               >
                 <UserX className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>Borçlar ({unpaidDebtCount})</span>
-              </button>
-            )}
-
-            {canAddTable && (
-              <button
-                id="add-new-table-btn"
-                onClick={onAddTableClick}
-                className="flex items-center gap-1 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-xl text-xs sm:text-sm font-semibold transition-colors shadow-xs shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span>Masa Ekle</span>
               </button>
             )}
           </div>
