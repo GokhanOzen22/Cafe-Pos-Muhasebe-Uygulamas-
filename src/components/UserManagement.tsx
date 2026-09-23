@@ -327,13 +327,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={handleOpenAddModal}
-            className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-stone-950 px-5 py-2.5 rounded-xl font-semibold shadow-sm hover:shadow transition-all"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Yeni Kullanıcı Ekle</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('open_change_password_modal'));
+              }}
+              className="flex items-center justify-center gap-2 bg-amber-500/15 hover:bg-amber-500 text-amber-500 hover:text-stone-950 border border-amber-500/30 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-xs"
+              title="Kendi PIN Kodunuzu / Giriş Şifrenizi Değiştirin"
+            >
+              <Key className="w-4 h-4" />
+              <span>Kendi Şifremi Değiştir</span>
+            </button>
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-stone-950 px-5 py-2.5 rounded-xl font-semibold shadow-sm hover:shadow transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Yeni Kullanıcı Ekle</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Role Stats Badges */}

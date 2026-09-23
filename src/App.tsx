@@ -51,7 +51,7 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = React.useCallback((msg: string, duration = 3500) => {
+  const showToast = React.useCallback((msg: string, duration = 2800) => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
@@ -61,6 +61,15 @@ export default function App() {
       toastTimeoutRef.current = null;
     }, duration);
   }, []);
+
+  // Ensure toast notification is always dismissed automatically even if prints/re-renders occur
+  React.useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   const [modalSessionKey, setModalSessionKey] = useState<number>(0);
 
@@ -185,9 +194,15 @@ export default function App() {
       }
     };
 
+    const handleOpenPasswordModal = () => {
+      setShowChangePasswordModal(true);
+    };
+
     window.addEventListener('kitchen_notifications_updated', handleNotifUpdate);
+    window.addEventListener('open_change_password_modal', handleOpenPasswordModal);
     return () => {
       window.removeEventListener('kitchen_notifications_updated', handleNotifUpdate);
+      window.removeEventListener('open_change_password_modal', handleOpenPasswordModal);
     };
   }, []);
 

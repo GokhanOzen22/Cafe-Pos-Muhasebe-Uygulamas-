@@ -533,7 +533,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
           </div>
 
           {/* Discount & Totals Section */}
-          <div className="p-4 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-800 space-y-3">
+          <div className="p-3 sm:p-4 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-800 space-y-2 sm:space-y-3 shrink-0">
             
             {/* Quick Discount Controls */}
             <div className="flex items-center justify-between gap-2 text-xs">

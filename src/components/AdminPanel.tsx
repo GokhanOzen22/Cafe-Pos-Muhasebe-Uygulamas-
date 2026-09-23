@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Category, MenuItem, StockItem, Order, Zone, Table, RestaurantSettings, AppUser, PurchaseInvoice, ExpenseInvoice, DailyZReport
+  Category, MenuItem, StockItem, Order, Zone, Table, RestaurantSettings, AppUser, PurchaseInvoice, ExpenseInvoice, DailyZReport, RecipeItem
 } from '../types';
 import {
   TrendingUp, BarChart3, Package, Utensils, Settings, History, Plus,
-  Trash2, Edit3, Save, Printer, AlertTriangle, ShieldCheck, DollarSign,
+  Trash2, Edit3, Edit2, Save, Printer, AlertTriangle, ShieldCheck, DollarSign,
   PieChart as PieChartIcon, Search, Check, RefreshCw, Users, Key,
   Percent, Coins, ArrowUpDown, Tag, X, LayoutGrid, Layers, Coffee,
   CupSoda, Egg, UtensilsCrossed, Hamburger, Cake, Upload, Image as ImageIcon, Building2, Link as LinkIcon,
   FileText, PlusCircle, FilePlus, Zap, Receipt, Eye, CheckCircle2, Calendar, Clock, Filter, AlertCircle,
   Lock, Archive, ChevronRight, CheckSquare, Sparkles, FolderArchive, ArrowRight, UserX,
-  MapPin, Phone, Landmark
+  MapPin, Phone, Landmark, Unlink
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -117,7 +117,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Sub tab states
   const [stockSubTab, setStockSubTab] = useState<'list' | 'box_intake'>('list');
   const [menuSubTab, setMenuSubTab] = useState<'items' | 'categories'>('items');
-  const [settingsSubTab, setSettingsSubTab] = useState<'hardware' | 'general' | 'zones'>('hardware');
+  const [settingsSubTab, setSettingsSubTab] = useState<'general' | 'hardware' | 'zones'>('general');
+  const [showBusinessInfoModal, setShowBusinessInfoModal] = useState<boolean>(false);
 
   // Category Management State
   const [showAddCategoryModal, setShowAddCategoryModal] = useState<boolean>(false);
@@ -252,6 +253,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [newItemUnit, setNewItemUnit] = useState<string>('Porsiyon');
   const [newItemStock, setNewItemStock] = useState<string>('50');
 
+  // Stock Link State for New Menu Item
+  const [stockLinkMode, setStockLinkMode] = useState<'auto_create' | 'link_existing' | 'recipe' | 'none'>('auto_create');
+  const [selectedStockId, setSelectedStockId] = useState<string>('');
+  const [selectedStockAmount, setSelectedStockAmount] = useState<string>('1');
+  const [recipeItems, setRecipeItems] = useState<RecipeItem[]>([]);
+  const [newRecipeStockId, setNewRecipeStockId] = useState<string>('');
+  const [newRecipeStockAmount, setNewRecipeStockAmount] = useState<string>('0.05');
+
   // Edit Menu Item State
   const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
   const [editItemName, setEditItemName] = useState<string>('');
@@ -260,6 +269,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editItemCategory, setEditItemCategory] = useState<string>('');
   const [editItemUnit, setEditItemUnit] = useState<string>('Porsiyon');
   const [editItemStock, setEditItemStock] = useState<string>('50');
+
+  // Stock Link State for Edit Menu Item
+  const [editStockLinkMode, setEditStockLinkMode] = useState<'auto_create' | 'link_existing' | 'recipe' | 'none'>('none');
+  const [editSelectedStockId, setEditSelectedStockId] = useState<string>('');
+  const [editSelectedStockAmount, setEditSelectedStockAmount] = useState<string>('1');
+  const [editRecipeItems, setEditRecipeItems] = useState<RecipeItem[]>([]);
+  const [editNewRecipeStockId, setEditNewRecipeStockId] = useState<string>('');
+  const [editNewRecipeStockAmount, setEditNewRecipeStockAmount] = useState<string>('0.05');
 
   // New Stock Item State
   const [showAddStockModal, setShowAddStockModal] = useState<boolean>(false);
@@ -331,13 +348,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // In-app Toast Notification State (replacing blocked window.alert)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (msg: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage((prev) => (prev === msg ? null : prev));
-    }, 3500);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 2800);
   };
+
+  React.useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   // Filter closed completed orders for reports based on date filter or archived Z-Report selection
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -671,13 +701,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSelectedArchiveZReport(createdReport);
     setReportDateFilter('active');
 
-    // Automatically trigger thermal Z-Report print
+    // Open Z-Report preview modal with explicit print options (no blocking synchronous print)
     setShowZReportModal(true);
-    setTimeout(() => {
-      handlePrintZReport();
-    }, 350);
 
-    showToast(`GÜN BAŞARIYLA KAPATILDI! ${createdReport.zReportNo} nolu Z-Raporu kaydedildi ve yeni güne geçildi.`);
+    showToast(`✓ Gün başarıyla kapatıldı! ${createdReport.zReportNo} nolu Z-Raporu arşive kaydedildi.`);
   };
 
   const handlePrintArchiveThermal = (report: DailyZReport) => {
@@ -711,18 +738,50 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Add New Menu Item Handler
   const handleCreateMenuItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newItemName || !newItemPrice) return;
+    if (!newItemName.trim() || !newItemPrice) return;
+
+    let finalRecipe: RecipeItem[] = [];
+    const createdStockItems = [...stockItems];
+
+    if (stockLinkMode === 'auto_create') {
+      const newStockId = 'stk-' + Date.now();
+      const autoStockQty = parseFloat(newItemStock) || 0;
+      const createdStock: StockItem = {
+        id: newStockId,
+        name: newItemName.trim(),
+        category: categories.find((c) => c.id === newItemCategory)?.name || 'Genel',
+        quantity: autoStockQty,
+        unit: (newItemUnit === 'Porsiyon' || newItemUnit === 'Fincan' || newItemUnit === 'Bardak' || newItemUnit === 'Dilim')
+          ? 'adet'
+          : newItemUnit.toLowerCase(),
+        minThreshold: 10,
+        costPerUnit: parseFloat(newItemCost) || 0,
+        lastUpdated: new Date().toISOString(),
+      };
+      createdStockItems.push(createdStock);
+      onUpdateStockItems(createdStockItems);
+      finalRecipe = [{ stockItemId: newStockId, amount: 1 }];
+    } else if (stockLinkMode === 'link_existing') {
+      if (selectedStockId) {
+        finalRecipe = [{ stockItemId: selectedStockId, amount: parseFloat(selectedStockAmount) || 1 }];
+      }
+    } else if (stockLinkMode === 'recipe') {
+      finalRecipe = [...recipeItems];
+    } else {
+      finalRecipe = [];
+    }
 
     const newItem: MenuItem = {
       id: 'item-' + Date.now(),
       categoryId: newItemCategory || categories[0]?.id || 'cat-1',
-      name: newItemName,
+      name: newItemName.trim(),
       price: parseFloat(newItemPrice) || 0,
       costPrice: parseFloat(newItemCost) || 0,
       unit: newItemUnit,
       stockQuantity: parseInt(newItemStock) || 0,
       minStockAlert: 10,
       isAvailable: true,
+      recipe: finalRecipe,
     };
 
     onUpdateMenuItems([...menuItems, newItem]);
@@ -730,6 +789,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewItemName('');
     setNewItemPrice('');
     setNewItemCost('');
+    setRecipeItems([]);
+    showToast(`✓ "${newItem.name}" menüye eklendi ve stok bağlantısı sağlandı!`);
   };
 
   // Open Edit Menu Item Modal
@@ -741,23 +802,74 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setEditItemCategory(item.categoryId);
     setEditItemUnit(item.unit || 'Porsiyon');
     setEditItemStock(String(item.stockQuantity || 0));
+
+    if (!item.recipe || item.recipe.length === 0) {
+      setEditStockLinkMode('none');
+      setEditSelectedStockId(stockItems[0]?.id || '');
+      setEditSelectedStockAmount('1');
+      setEditRecipeItems([]);
+    } else if (item.recipe.length === 1) {
+      setEditStockLinkMode('link_existing');
+      setEditSelectedStockId(item.recipe[0].stockItemId);
+      setEditSelectedStockAmount(String(item.recipe[0].amount));
+      setEditRecipeItems([...item.recipe]);
+    } else {
+      setEditStockLinkMode('recipe');
+      setEditRecipeItems([...item.recipe]);
+      setEditSelectedStockId(stockItems[0]?.id || '');
+      setEditSelectedStockAmount('1');
+    }
+    setEditNewRecipeStockId(stockItems[0]?.id || '');
+    setEditNewRecipeStockAmount('0.05');
   };
 
   // Save Edit Menu Item
   const handleSaveEditedMenuItem = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingMenuItem || !editItemName) return;
+    if (!editingMenuItem || !editItemName.trim()) return;
+
+    let finalRecipe: RecipeItem[] = [];
+    const updatedStockItemsList = [...stockItems];
+
+    if (editStockLinkMode === 'auto_create') {
+      const newStockId = 'stk-' + Date.now();
+      const autoStockQty = parseFloat(editItemStock) || 0;
+      const createdStock: StockItem = {
+        id: newStockId,
+        name: editItemName.trim(),
+        category: categories.find((c) => c.id === editItemCategory)?.name || 'Genel',
+        quantity: autoStockQty,
+        unit: (editItemUnit === 'Porsiyon' || editItemUnit === 'Fincan' || editItemUnit === 'Bardak' || editItemUnit === 'Dilim')
+          ? 'adet'
+          : editItemUnit.toLowerCase(),
+        minThreshold: 10,
+        costPerUnit: parseFloat(editItemCost) || 0,
+        lastUpdated: new Date().toISOString(),
+      };
+      updatedStockItemsList.push(createdStock);
+      onUpdateStockItems(updatedStockItemsList);
+      finalRecipe = [{ stockItemId: newStockId, amount: 1 }];
+    } else if (editStockLinkMode === 'link_existing') {
+      if (editSelectedStockId) {
+        finalRecipe = [{ stockItemId: editSelectedStockId, amount: parseFloat(editSelectedStockAmount) || 1 }];
+      }
+    } else if (editStockLinkMode === 'recipe') {
+      finalRecipe = [...editRecipeItems];
+    } else {
+      finalRecipe = [];
+    }
 
     const updatedList = menuItems.map((m) => {
       if (m.id === editingMenuItem.id) {
         return {
           ...m,
-          name: editItemName,
+          name: editItemName.trim(),
           price: parseFloat(editItemPrice) || 0,
           costPrice: parseFloat(editItemCost) || 0,
           categoryId: editItemCategory,
           unit: editItemUnit,
           stockQuantity: parseInt(editItemStock) || 0,
+          recipe: finalRecipe,
         };
       }
       return m;
@@ -765,6 +877,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     onUpdateMenuItems(updatedList);
     setEditingMenuItem(null);
+    showToast(`✓ "${editItemName}" menü ürünü ve stok bağlantısı güncellendi!`);
   };
 
   // Add New Stock Item Handler
@@ -1448,14 +1561,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className="space-y-6">
       
       {/* Admin Panel Sub Navigation Tabs */}
-      <div className="bg-white dark:bg-stone-900 p-3 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full text-xs font-semibold">
+      <div className="bg-white dark:bg-stone-900 p-2.5 sm:p-3 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex items-center justify-between flex-wrap gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 max-w-full text-xs font-semibold no-scrollbar">
           {canViewReports && (
             <button
               onClick={() => setActiveTab('reports')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'reports'
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
@@ -1467,7 +1580,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageInvoices && (
             <button
               onClick={() => setActiveTab('invoices')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'invoices'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
@@ -1481,9 +1594,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageMenu && (
             <button
               onClick={() => setActiveTab('menu')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'menu'
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
@@ -1495,9 +1608,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageStock && (
             <button
               onClick={() => setActiveTab('stock')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'stock'
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
@@ -1509,7 +1622,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canAddTable && (
             <button
               onClick={() => setActiveTab('tables')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'tables'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
@@ -1523,9 +1636,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageUsers && (
             <button
               onClick={() => setActiveTab('users')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'users'
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
@@ -1537,9 +1650,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canViewReports && (
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'history'
-                  ? 'bg-amber-500 text-stone-950 shadow-xs'
+                  ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
@@ -1548,11 +1661,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </button>
           )}
 
-
           {canManageSettings && (
             <button
-              onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              onClick={() => {
+                setActiveTab('settings');
+                setSettingsSubTab('general');
+              }}
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'settings'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
@@ -1566,17 +1681,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageServer && (
             <button
               onClick={() => setActiveTab('server')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                 activeTab === 'server'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
               <ServerIcon className="w-4 h-4 text-emerald-500" />
-              <span>Kasa Sunucusu & Yerel SQLite ({orders.length} Adisyon)</span>
+              <span>Kasa Sunucusu ({orders.length} Adisyon)</span>
             </button>
           )}
         </div>
+
+        {/* Direct Quick Action: Edit Business Info (Vergi No, Adres, Telefon) */}
+        {canManageSettings && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowBusinessInfoModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-stone-950 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-xs shrink-0"
+              title="Vergi No, Adres, Telefon ve Fiş Başlığı Bilgilerini Düzenle"
+            >
+              <Building2 className="w-4 h-4 text-amber-500" />
+              <span className="hidden sm:inline">İşletme Bilgileri (Vergi No, Adres, Tel)</span>
+              <span className="sm:hidden">İşletme Bilgileri</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* TAB 1: REPORTING & ANALYTICS */}
@@ -1607,11 +1738,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {settings.taxNumber && (
                     <span>• 🏢 {settings.taxOffice ? `${settings.taxOffice} • ` : ''}VKN: {settings.taxNumber}</span>
                   )}
+                  {canManageSettings && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBusinessInfoModal(true)}
+                      className="ml-1 text-amber-600 dark:text-amber-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                      title="İşletme Bilgilerini Düzenle"
+                    >
+                      <Edit2 className="w-3 h-3" />
+                      <span>Düzenle</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-center">
+              {canManageSettings && (
+                <button
+                  type="button"
+                  onClick={() => setShowBusinessInfoModal(true)}
+                  className="py-2.5 px-3.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 text-stone-800 dark:text-stone-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 transition-all border border-stone-300 dark:border-stone-700 cursor-pointer shadow-xs shrink-0"
+                  title="Vergi No, Adres ve Telefon Bilgilerini Değiştir"
+                >
+                  <Building2 className="w-4 h-4 text-amber-500" />
+                  <span>Bilgileri Düzenle</span>
+                </button>
+              )}
+
               {canCloseDay && (
                 <button
                   type="button"
@@ -2706,6 +2860,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <th className="p-4">Satış Fiyatı</th>
                     <th className="p-4">Maliyet</th>
                     <th className="p-4">Mevcut Stok</th>
+                    <th className="p-4">Tüketilen Stok / Reçete</th>
                     <th className="p-4 text-right">İşlemler</th>
                   </tr>
                 </thead>
@@ -2732,6 +2887,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           }`}>
                             {item.stockQuantity} {item.unit}
                           </span>
+                        </td>
+                        <td className="p-4">
+                          {item.recipe && item.recipe.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {item.recipe.map((r, rIdx) => {
+                                const stock = stockItems.find((s) => s.id === r.stockItemId);
+                                return (
+                                  <span
+                                    key={rIdx}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-xs font-semibold"
+                                  >
+                                    <Package className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                    <span className="truncate max-w-[120px]">{stock?.name || 'Bilinmeyen Stok'}</span>
+                                    <span className="font-mono bg-emerald-200/60 dark:bg-emerald-900/60 px-1 py-0.5 rounded text-[11px] text-emerald-900 dark:text-emerald-100 font-bold">
+                                      {r.amount} {stock?.unit || 'adet'}
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditMenuItem(item)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 hover:bg-amber-100 transition-colors cursor-pointer"
+                              title="Bu ürünü depodaki bir stoğa bağlamak için tıklayın"
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                              <span>Stoğa Bağla</span>
+                            </button>
+                          )}
                         </td>
                         <td className="p-4 text-right flex items-center justify-end gap-1">
                           <button
@@ -2855,6 +3041,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <tr>
                     <th className="p-4">Hammadde Adı</th>
                     <th className="p-4">Miktar</th>
+                    <th className="p-4">Tüketen Menü Ürünleri</th>
                     <th className="p-4">Koli İçi Adet</th>
                     <th className="p-4">Koli Barkod</th>
                     <th className="p-4">Kritik Eşik</th>
@@ -2866,10 +3053,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
                   {stockItems.map((stock) => {
                     const isCritical = stock.quantity <= stock.minThreshold;
+                    const consuming = menuItems.filter((m) => m.recipe?.some((r) => r.stockItemId === stock.id));
                     return (
                       <tr key={stock.id} className="hover:bg-stone-50/50 dark:hover:bg-stone-800/50">
                         <td className="p-4 font-bold text-stone-900 dark:text-stone-100">{stock.name}</td>
                         <td className="p-4 font-bold text-base">{stock.quantity} {stock.unit}</td>
+                        <td className="p-4">
+                          {consuming.length === 0 ? (
+                            <span className="text-xs text-stone-400 dark:text-stone-500 italic">
+                              Bağlı ürün yok
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {consuming.map((m) => {
+                                const recipeItem = m.recipe?.find((r) => r.stockItemId === stock.id);
+                                return (
+                                  <span
+                                    key={m.id}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold text-xs border border-stone-200 dark:border-stone-700 shadow-2xs"
+                                    title={`${m.name} satışında bu stoktan ${recipeItem?.amount || 1} ${stock.unit} düşer`}
+                                  >
+                                    <Utensils className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                    <span className="truncate max-w-[110px]">{m.name}</span>
+                                    <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 font-bold">
+                                      ({recipeItem?.amount || 1} {stock.unit})
+                                    </span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-4 text-xs font-semibold text-stone-600 dark:text-stone-300">
                           {stock.itemsPerBox ? `1 ${stock.boxUnitName || 'Koli'} = ${stock.itemsPerBox} ${stock.unit}` : '-'}
                         </td>
@@ -3298,37 +3512,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {activeTab === 'settings' && canManageSettings && (
         <div className="space-y-6">
           {/* Sub Navigation Bar for Settings */}
-          <div className="bg-white dark:bg-stone-900 p-3 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold">
+          <div className="bg-white dark:bg-stone-900 p-2.5 sm:p-3 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-xs font-bold overflow-x-auto pb-1 max-w-full no-scrollbar">
+              <button
+                onClick={() => setSettingsSubTab('general')}
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                  settingsSubTab === 'general'
+                    ? 'bg-amber-500 text-stone-950 shadow-xs font-black'
+                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                }`}
+              >
+                <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover:text-stone-950" />
+                <span>İşletme Bilgileri (Vergi No, Adres, Tel)</span>
+              </button>
+
               <button
                 onClick={() => setSettingsSubTab('hardware')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                   settingsSubTab === 'hardware'
-                    ? 'bg-amber-500 text-stone-950 shadow-xs'
+                    ? 'bg-amber-500 text-stone-950 shadow-xs font-black'
                     : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
                 }`}
               >
                 <Printer className="w-4 h-4" />
-                <span>Yazıcı, Port & Barkod Okuyucu Donanımları</span>
-              </button>
-
-              <button
-                onClick={() => setSettingsSubTab('general')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
-                  settingsSubTab === 'general'
-                    ? 'bg-amber-500 text-stone-950 shadow-xs'
-                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                <span>Genel İşletme & Fiş Ayarları</span>
+                <span>Yazıcı, Port & Barkod Donanımları</span>
               </button>
 
               <button
                 onClick={() => setSettingsSubTab('zones')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all ${
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                   settingsSubTab === 'zones'
-                    ? 'bg-amber-500 text-stone-950 shadow-xs'
+                    ? 'bg-amber-500 text-stone-950 shadow-xs font-black'
                     : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
                 }`}
               >
@@ -4193,9 +4407,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Add Menu Item Modal */}
       {showAddMenuModal && (
         <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <form onSubmit={handleCreateMenuItem} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+          <form onSubmit={handleCreateMenuItem} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-xl max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
-              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100">Yeni Menü Ürünü Ekle</h3>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/10 text-amber-600 rounded-xl">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100">Yeni Menü Ürünü Ekle</h3>
+                  <p className="text-xs text-stone-500">Ürün bilgileri ve depo stok bağlantısı</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setShowAddMenuModal(false)}
@@ -4213,7 +4435,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 placeholder="Örn: Serpe Kahvaltı, Latte, Tost..."
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
-                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-semibold"
               />
             </div>
 
@@ -4232,7 +4454,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-amber-600 dark:text-amber-400">Geliş / Alış Fiyatı (₺):</label>
+                <label className="text-xs font-semibold text-amber-600 dark:text-amber-400">Geliş / Alış Maliyeti (₺):</label>
                 <input
                   type="number"
                   step="0.5"
@@ -4276,13 +4498,251 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-stone-500">Başlangıç Stok Miktarı:</label>
+              <label className="text-xs font-semibold text-stone-500">Başlangıç Menü Stok / Porsiyon Miktarı:</label>
               <input
                 type="number"
                 value={newItemStock}
                 onChange={(e) => setNewItemStock(e.target.value)}
                 className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
               />
+            </div>
+
+            {/* Stok Bağlama & Tüketim Bölümü */}
+            <div className="bg-stone-50 dark:bg-stone-805/70 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700/70 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-amber-500" />
+                  <label className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                    Depo Stoğuna Bağla (Hangi Stoğu Tüketecek?):
+                  </label>
+                </div>
+                <span className="text-[10px] text-stone-500 dark:text-stone-400 font-medium">
+                  Sipariş satıldığında otomatik düşer
+                </span>
+              </div>
+
+              {/* 4 Seçenekli Mod Seçici */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-200/60 dark:bg-stone-900/60 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setStockLinkMode('auto_create')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    stockLinkMode === 'auto_create'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Otomatik Stok Aç & Bağla</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockLinkMode('link_existing');
+                    if (!selectedStockId && stockItems.length > 0) {
+                      setSelectedStockId(stockItems[0].id);
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    stockLinkMode === 'link_existing'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <LinkIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Mevcut Stoğa Bağla</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockLinkMode('recipe');
+                    if (!newRecipeStockId && stockItems.length > 0) {
+                      setNewRecipeStockId(stockItems[0].id);
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    stockLinkMode === 'recipe'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Utensils className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Reçete / Çoklu Malzeme</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockLinkMode('none')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    stockLinkMode === 'none'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Unlink className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Stoğa Bağlama</span>
+                </button>
+              </div>
+
+              {/* Mod 1: Otomatik Stok Aç */}
+              {stockLinkMode === 'auto_create' && (
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3 text-xs space-y-1.5 text-stone-700 dark:text-stone-300">
+                  <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-300">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Depoda Otomatik Stok Kartı Oluşturulacak</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Bu ürün menüye kaydedildiğinde depoda <strong>"{newItemName.trim() || 'Ürün Adı'}"</strong> adında yeni bir stok kartı otomatik açılacak ve bu ürüne 1'e 1 satış düşümü ile bağlanacaktır.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between text-[11px] font-mono text-stone-600 dark:text-stone-400 border-t border-amber-200/60 dark:border-amber-800/40">
+                    <span>Açılacak Stok Miktarı: <strong>{newItemStock || 0} {newItemUnit}</strong></span>
+                    <span>Birim Maliyet: <strong>{newItemCost || 0} ₺</strong></span>
+                  </div>
+                </div>
+              )}
+
+              {/* Mod 2: Mevcut Stoğa Bağla */}
+              {stockLinkMode === 'link_existing' && (
+                <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl p-3 space-y-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-stone-500">Depodaki Stok Kartını Seçin:</label>
+                    <select
+                      value={selectedStockId}
+                      onChange={(e) => setSelectedStockId(e.target.value)}
+                      className="w-full mt-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-medium"
+                    >
+                      {stockItems.length === 0 ? (
+                        <option value="">Depoda kayıtlı stok bulunmuyor</option>
+                      ) : (
+                        stockItems.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} (Mevcut: {s.quantity} {s.unit})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-stone-500">Porsiyon Başı Tüketim Miktarı:</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0.001"
+                        value={selectedStockAmount}
+                        onChange={(e) => setSelectedStockAmount(e.target.value)}
+                        className="w-full mt-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-bold"
+                      />
+                    </div>
+                    <div className="w-24 pt-5 text-xs font-bold text-stone-600 dark:text-stone-300">
+                      {stockItems.find((s) => s.id === selectedStockId)?.unit || 'adet'}
+                    </div>
+                  </div>
+
+                  {selectedStockId && (
+                    <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
+                      ✓ Her 1 <strong>{newItemName || 'ürün'}</strong> satıldığında, depodaki <strong>{stockItems.find((s) => s.id === selectedStockId)?.name}</strong> stoğundan <strong>{selectedStockAmount} {stockItems.find((s) => s.id === selectedStockId)?.unit}</strong> eksilecektir.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mod 3: Reçete / Çoklu Hammadde */}
+              {stockLinkMode === 'recipe' && (
+                <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl p-3 space-y-2.5">
+                  <div className="text-xs font-semibold text-stone-500">
+                    Reçete Hammaddeleri ({recipeItems.length}):
+                  </div>
+
+                  {recipeItems.length === 0 ? (
+                    <div className="p-2.5 text-center text-xs text-stone-400 italic bg-stone-50 dark:bg-stone-800 rounded-lg">
+                      Henüz hammadde eklenmedi. Aşağıdan malzeme seçip 'Reçeteye Ekle' butonuna basın.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {recipeItems.map((r, rIdx) => {
+                        const s = stockItems.find((st) => st.id === r.stockItemId);
+                        return (
+                          <div
+                            key={rIdx}
+                            className="flex items-center justify-between p-2 rounded-lg bg-stone-50 dark:bg-stone-800 text-xs border border-stone-100 dark:border-stone-700"
+                          >
+                            <span className="font-bold text-stone-800 dark:text-stone-200 truncate max-w-[150px]">
+                              {s?.name || 'Bilinmeyen Stok'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                                {r.amount} {s?.unit}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setRecipeItems(recipeItems.filter((_, idx) => idx !== rIdx))}
+                                className="text-rose-500 hover:text-rose-700 p-0.5"
+                                title="Hammaddeyi Çıkar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Hammadde Ekleme Satırı */}
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-stone-100 dark:border-stone-800">
+                    <select
+                      value={newRecipeStockId}
+                      onChange={(e) => setNewRecipeStockId(e.target.value)}
+                      className="flex-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs"
+                    >
+                      {stockItems.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.unit})
+                        </option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      placeholder="Miktar"
+                      value={newRecipeStockAmount}
+                      onChange={(e) => setNewRecipeStockAmount(e.target.value)}
+                      className="w-20 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-bold text-center"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newRecipeStockId) return;
+                        const amt = parseFloat(newRecipeStockAmount) || 0.05;
+                        setRecipeItems([...recipeItems, { stockItemId: newRecipeStockId, amount: amt }]);
+                      }}
+                      className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs shrink-0 shadow-2xs"
+                    >
+                      + Ekle
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mod 4: Stoğa Bağlama */}
+              {stockLinkMode === 'none' && (
+                <div className="bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 rounded-xl p-3 text-xs text-stone-500 space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-stone-700 dark:text-stone-300">
+                    <Unlink className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Bağlantısız Ürün</span>
+                  </div>
+                  <p className="text-[11px]">
+                    Bu menü ürünü satıldığında depodaki hiçbir hammadde veya stok eksilmeyecektir. Sadece menü içindeki kalan porsiyon sayısı düşer.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-3">
@@ -4307,9 +4767,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Edit Menu Item Modal */}
       {editingMenuItem && (
         <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <form onSubmit={handleSaveEditedMenuItem} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl">
+          <form onSubmit={handleSaveEditedMenuItem} className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl p-6 w-full max-w-xl max-h-[92vh] overflow-y-auto space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
-              <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100">Menü Ürününü Düzenle</h3>
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/10 text-amber-600 rounded-xl">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-stone-900 dark:text-stone-100">Menü Ürününü Düzenle</h3>
+                  <p className="text-xs text-stone-500">Ürün fiyatı, detayları ve bağlı stok / reçete ayarı</p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setEditingMenuItem(null)}
@@ -4326,7 +4794,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 value={editItemName}
                 onChange={(e) => setEditItemName(e.target.value)}
-                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
+                className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm font-semibold"
               />
             </div>
 
@@ -4344,7 +4812,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-amber-600 dark:text-amber-400">Geliş / Alış Fiyatı (₺):</label>
+                <label className="text-xs font-semibold text-amber-600 dark:text-amber-400">Geliş / Alış Maliyeti (₺):</label>
                 <input
                   type="number"
                   step="0.5"
@@ -4387,13 +4855,251 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-stone-500">Stok Miktarı:</label>
+              <label className="text-xs font-semibold text-stone-500">Mevcut Menü Stok / Porsiyon Miktarı:</label>
               <input
                 type="number"
                 value={editItemStock}
                 onChange={(e) => setEditItemStock(e.target.value)}
                 className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl text-sm"
               />
+            </div>
+
+            {/* Edit Stok Bağlama Bölümü */}
+            <div className="bg-stone-50 dark:bg-stone-800/70 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700/70 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-amber-500" />
+                  <label className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                    Depo Stoğuna Bağla (Hangi Stoğu Tüketecek?):
+                  </label>
+                </div>
+                <span className="text-[10px] text-stone-500 dark:text-stone-400 font-medium">
+                  Sipariş satıldığında otomatik düşer
+                </span>
+              </div>
+
+              {/* 4 Seçenekli Mod Seçici */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-200/60 dark:bg-stone-900/60 rounded-xl text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setEditStockLinkMode('auto_create')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    editStockLinkMode === 'auto_create'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Yeni Stok Kartı Aç</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditStockLinkMode('link_existing');
+                    if (!editSelectedStockId && stockItems.length > 0) {
+                      setEditSelectedStockId(stockItems[0].id);
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    editStockLinkMode === 'link_existing'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <LinkIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Mevcut Stoğa Bağla</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditStockLinkMode('recipe');
+                    if (!editNewRecipeStockId && stockItems.length > 0) {
+                      setEditNewRecipeStockId(stockItems[0].id);
+                    }
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    editStockLinkMode === 'recipe'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Utensils className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Reçete / Çoklu Malzeme</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEditStockLinkMode('none')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all text-left flex items-center gap-1.5 ${
+                    editStockLinkMode === 'none'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Unlink className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">Stoğa Bağlama</span>
+                </button>
+              </div>
+
+              {/* Mod 1: Otomatik Stok Aç */}
+              {editStockLinkMode === 'auto_create' && (
+                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3 text-xs space-y-1.5 text-stone-700 dark:text-stone-300">
+                  <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-300">
+                    <Sparkles className="w-4 h-4 text-amber-500" />
+                    <span>Depoda Yeni Stok Kartı Oluşturulacak</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Kaydettiğinizde depoda <strong>"{editItemName.trim() || 'Ürün Adı'}"</strong> adında birebir stok kartı açılacak ve bu ürüne 1'e 1 satış düşümü ile bağlanacaktır.
+                  </p>
+                  <div className="pt-1 flex items-center justify-between text-[11px] font-mono text-stone-600 dark:text-stone-400 border-t border-amber-200/60 dark:border-amber-800/40">
+                    <span>Açılacak Stok Miktarı: <strong>{editItemStock || 0} {editItemUnit}</strong></span>
+                    <span>Birim Maliyet: <strong>{editItemCost || 0} ₺</strong></span>
+                  </div>
+                </div>
+              )}
+
+              {/* Mod 2: Mevcut Stoğa Bağla */}
+              {editStockLinkMode === 'link_existing' && (
+                <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl p-3 space-y-2.5">
+                  <div>
+                    <label className="text-xs font-semibold text-stone-500">Depodaki Stok Kartını Seçin:</label>
+                    <select
+                      value={editSelectedStockId}
+                      onChange={(e) => setEditSelectedStockId(e.target.value)}
+                      className="w-full mt-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-medium"
+                    >
+                      {stockItems.length === 0 ? (
+                        <option value="">Depoda kayıtlı stok bulunmuyor</option>
+                      ) : (
+                        stockItems.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} (Mevcut: {s.quantity} {s.unit})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-stone-500">Porsiyon Başı Tüketim Miktarı:</label>
+                      <input
+                        type="number"
+                        step="0.001"
+                        min="0.001"
+                        value={editSelectedStockAmount}
+                        onChange={(e) => setEditSelectedStockAmount(e.target.value)}
+                        className="w-full mt-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-bold"
+                      />
+                    </div>
+                    <div className="w-24 pt-5 text-xs font-bold text-stone-600 dark:text-stone-300">
+                      {stockItems.find((s) => s.id === editSelectedStockId)?.unit || 'adet'}
+                    </div>
+                  </div>
+
+                  {editSelectedStockId && (
+                    <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
+                      ✓ Her 1 <strong>{editItemName || 'ürün'}</strong> satıldığında, depodaki <strong>{stockItems.find((s) => s.id === editSelectedStockId)?.name}</strong> stoğundan <strong>{editSelectedStockAmount} {stockItems.find((s) => s.id === editSelectedStockId)?.unit}</strong> eksilecektir.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Mod 3: Reçete / Çoklu Hammadde */}
+              {editStockLinkMode === 'recipe' && (
+                <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl p-3 space-y-2.5">
+                  <div className="text-xs font-semibold text-stone-500">
+                    Reçete Hammaddeleri ({editRecipeItems.length}):
+                  </div>
+
+                  {editRecipeItems.length === 0 ? (
+                    <div className="p-2.5 text-center text-xs text-stone-400 italic bg-stone-50 dark:bg-stone-800 rounded-lg">
+                      Henüz hammadde eklenmedi. Aşağıdan malzeme seçip 'Reçeteye Ekle' butonuna basın.
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                      {editRecipeItems.map((r, rIdx) => {
+                        const s = stockItems.find((st) => st.id === r.stockItemId);
+                        return (
+                          <div
+                            key={rIdx}
+                            className="flex items-center justify-between p-2 rounded-lg bg-stone-50 dark:bg-stone-800 text-xs border border-stone-100 dark:border-stone-700"
+                          >
+                            <span className="font-bold text-stone-800 dark:text-stone-200 truncate max-w-[150px]">
+                              {s?.name || 'Bilinmeyen Stok'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                                {r.amount} {s?.unit}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setEditRecipeItems(editRecipeItems.filter((_, idx) => idx !== rIdx))}
+                                className="text-rose-500 hover:text-rose-700 p-0.5"
+                                title="Hammaddeyi Çıkar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Hammadde Ekleme Satırı */}
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-stone-100 dark:border-stone-800">
+                    <select
+                      value={editNewRecipeStockId}
+                      onChange={(e) => setEditNewRecipeStockId(e.target.value)}
+                      className="flex-1 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs"
+                    >
+                      {stockItems.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.unit})
+                        </option>
+                      ))}
+                    </select>
+
+                    <input
+                      type="number"
+                      step="0.001"
+                      min="0.001"
+                      placeholder="Miktar"
+                      value={editNewRecipeStockAmount}
+                      onChange={(e) => setEditNewRecipeStockAmount(e.target.value)}
+                      className="w-20 p-2 bg-stone-50 dark:bg-stone-800 border rounded-xl text-xs font-bold text-center"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!editNewRecipeStockId) return;
+                        const amt = parseFloat(editNewRecipeStockAmount) || 0.05;
+                        setEditRecipeItems([...editRecipeItems, { stockItemId: editNewRecipeStockId, amount: amt }]);
+                      }}
+                      className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs shrink-0 shadow-2xs"
+                    >
+                      + Ekle
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Mod 4: Stoğa Bağlama */}
+              {editStockLinkMode === 'none' && (
+                <div className="bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 rounded-xl p-3 text-xs text-stone-500 space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold text-stone-700 dark:text-stone-300">
+                    <Unlink className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Bağlantısız Ürün</span>
+                  </div>
+                  <p className="text-[11px]">
+                    Bu menü ürünü satıldığında depodaki hiçbir hammadde veya stok eksilmeyecektir. Sadece menü içindeki kalan porsiyon sayısı düşer.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-3">
@@ -6581,6 +7287,224 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold hover:bg-stone-200 cursor-pointer"
               >
                 Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Business Info Edit Modal */}
+      {showBusinessInfoModal && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-850 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-amber-500/20 text-amber-500 rounded-2xl border border-amber-500/30">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-stone-900 dark:text-stone-100 text-base sm:text-lg">
+                    İşletme Bilgilerini Düzenle
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Vergi No, adres, telefon ve fiş başlığı bilgilerini güncelleyin.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBusinessInfoModal(false)}
+                className="p-2 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body Form */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+              {/* Business Name */}
+              <div>
+                <label className="font-bold text-stone-700 dark:text-stone-300 block mb-1">
+                  İşletme / Restoran Adı (Fiş ve Sistem Başlığı):
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Örn: Meriç Belediyesi Sosyal Tesisleri"
+                  value={editSettingsForm.name}
+                  onChange={(e) => setEditSettingsForm({ ...editSettingsForm, name: e.target.value })}
+                  className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                />
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                  <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                  <span>İşletme Adresi (Adisyon fişi ve Z-Raporunda yazdırılır):</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Örn: Meriç Sosyal Tesisleri, Edirne"
+                  value={editSettingsForm.address || ''}
+                  onChange={(e) => setEditSettingsForm({ ...editSettingsForm, address: e.target.value })}
+                  className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                />
+              </div>
+
+              {/* Phone & Tax Number (VKN) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <Phone className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Telefon Numarası:</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Örn: 0 (284) 513 10 10"
+                    value={editSettingsForm.phone || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, phone: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <FileText className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Vergi Kimlik No (VKN / TCKN):</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Örn: 6180054321"
+                    value={editSettingsForm.taxNumber || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxNumber: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono font-black text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden tracking-wider"
+                  />
+                </div>
+              </div>
+
+              {/* Tax Office & VAT Rate */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <Landmark className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Vergi Dairesi:</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Örn: Meriç Vergi Dairesi"
+                    value={editSettingsForm.taxOffice || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxOffice: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <Percent className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Varsayılan KDV Oranı (%):</span>
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={editSettingsForm.taxRatePercent}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxRatePercent: parseFloat(e.target.value) || 10 })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Receipt Notes */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <Tag className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Fiş Karşılama Notu:</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Örn: Tesislerimize Hoş Geldiniz"
+                    value={editSettingsForm.receiptHeaderNote || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptHeaderNote: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
+                    <Tag className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Fiş Altı Teşekkür Notu:</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Örn: Afiyet olsun, yine bekleriz!"
+                    value={editSettingsForm.receiptFooterNote || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptFooterNote: e.target.value })}
+                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                  />
+                </div>
+              </div>
+
+              {/* Logo Selection Preview & Upload */}
+              <div className="p-3.5 bg-stone-50 dark:bg-stone-800/60 rounded-2xl border border-stone-200 dark:border-stone-700 flex flex-col sm:flex-row items-center gap-3">
+                <div className="w-14 h-14 rounded-xl border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 flex items-center justify-center overflow-hidden shrink-0">
+                  {editSettingsForm.logoUrl ? (
+                    <img src={editSettingsForm.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+                  ) : (
+                    <Utensils className="w-6 h-6 text-stone-400" />
+                  )}
+                </div>
+                <div className="flex-1 w-full space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <label className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Logo Yükle</span>
+                      <input type="file" accept="image/*" onChange={handleLogoFileUpload} className="hidden" />
+                    </label>
+                    {editSettingsForm.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, logoUrl: '' }))}
+                        className="px-2.5 py-1.5 bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Kaldır</span>
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Veya web logo URL (https://...)"
+                    value={editSettingsForm.logoUrl || ''}
+                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, logoUrl: e.target.value })}
+                    className="w-full p-2 text-xs bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-4 sm:p-5 border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-850 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowBusinessInfoModal(false)}
+                className="px-4 py-2.5 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold rounded-xl text-xs hover:bg-stone-300 dark:hover:bg-stone-750 transition-colors cursor-pointer"
+              >
+                Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onUpdateSettings(editSettingsForm);
+                  setShowBusinessInfoModal(false);
+                  showToast('✓ İşletme bilgileri (Vergi No, Adres, Telefon) başarıyla güncellendi!');
+                }}
+                className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black rounded-xl text-xs sm:text-sm flex items-center gap-2 shadow-md hover:shadow-lg transition-all cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>Bilgileri Kaydet ve Fişe Uygula</span>
               </button>
             </div>
           </div>

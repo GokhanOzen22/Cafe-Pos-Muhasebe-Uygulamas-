@@ -441,16 +441,17 @@ export const Header: React.FC<HeaderProps> = ({
                   <KeyRound className="w-3 h-3 text-stone-400 group-hover:text-amber-400 transition-colors ml-0.5 shrink-0" />
                 </button>
 
-                {/* Dedicated Change Password Button */}
+                {/* Dedicated Change Password Button (Visible on all screen sizes) */}
                 {onOpenChangePasswordModal && (
                   <button
                     type="button"
                     onClick={onOpenChangePasswordModal}
                     title="Kendi Şifrenizi / PIN Kodunuzu Değiştirin"
-                    className="hidden 2xl:flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 px-2 py-1.5 rounded-xl border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shrink-0"
+                    className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-stone-950 px-2 sm:px-2.5 py-1.5 rounded-xl border border-amber-500/40 text-xs font-bold transition-all cursor-pointer shrink-0 shadow-xs"
                   >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Şifre</span>
+                    <KeyRound className="w-3.5 h-3.5 text-amber-400 group-hover:text-stone-950" />
+                    <span className="hidden lg:inline">Şifremi Değiştir</span>
+                    <span className="lg:hidden">Şifre</span>
                   </button>
                 )}
 
@@ -480,12 +481,12 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Submenu Tabs */}
-      <div className="md:hidden flex items-center justify-around py-2 border-t border-stone-800 text-xs">
+      <div className="md:hidden flex items-center justify-around py-2 border-t border-stone-800 text-xs px-2 gap-1 overflow-x-auto">
         {canAccessTables && (
           <button
             onClick={() => { onTabChange('tables'); onRoleChange('pos'); }}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-medium ${
-              activeTab === 'tables' ? 'bg-amber-500 text-stone-950' : 'text-stone-300'
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium whitespace-nowrap ${
+              activeTab === 'tables' ? 'bg-amber-500 text-stone-950 font-bold' : 'text-stone-300'
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" />
@@ -495,8 +496,8 @@ export const Header: React.FC<HeaderProps> = ({
         {canAccessKitchen && (
           <button
             onClick={() => { onTabChange('kitchen'); onRoleChange('kitchen'); }}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-medium ${
-              activeTab === 'kitchen' ? 'bg-amber-500 text-stone-950' : 'text-stone-300'
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium whitespace-nowrap ${
+              activeTab === 'kitchen' ? 'bg-amber-500 text-stone-950 font-bold' : 'text-stone-300'
             }`}
           >
             <ChefHat className="w-3.5 h-3.5" />
@@ -506,12 +507,22 @@ export const Header: React.FC<HeaderProps> = ({
         {canAccessAdmin && (
           <button
             onClick={() => { onTabChange('admin'); onRoleChange('admin'); }}
-            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-medium ${
-              activeTab === 'admin' ? 'bg-amber-500 text-stone-950' : 'text-stone-300'
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium whitespace-nowrap ${
+              activeTab === 'admin' ? 'bg-amber-500 text-stone-950 font-bold' : 'text-stone-300'
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             Yönetim
+          </button>
+        )}
+        {currentUser && onOpenChangePasswordModal && (
+          <button
+            type="button"
+            onClick={onOpenChangePasswordModal}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg font-medium text-amber-400 bg-amber-500/10 whitespace-nowrap"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            Şifre
           </button>
         )}
       </div>

@@ -131,36 +131,36 @@ export const initialCategories: Category[] = [
 
 export const initialMenuItems: MenuItem[] = [
   // Sıcak İçecekler
-  { id: 'item-1', categoryId: 'cat-1', name: 'Demleme Çay', description: 'Taze Karadeniz demleme çayı', price: 35, costPrice: 4, unit: 'Bardak', stockQuantity: 350, minStockAlert: 50, isAvailable: true },
-  { id: 'item-2', categoryId: 'cat-1', name: 'Türk Kahvesi', description: 'Geleneksel közde Türk kahvesi, lokum ile', price: 75, costPrice: 12, unit: 'Fincan', stockQuantity: 120, minStockAlert: 20, isAvailable: true },
-  { id: 'item-3', categoryId: 'cat-1', name: 'Espresso', description: 'Tek shot yoğun %100 Arabica espresso', price: 80, costPrice: 15, unit: 'Fincan', stockQuantity: 200, minStockAlert: 30, isAvailable: true },
-  { id: 'item-4', categoryId: 'cat-1', name: 'Caffè Latte', description: 'Espresso, buharla ısıtılmış taze süt ve kadifemsi köpük', price: 110, costPrice: 22, unit: 'Bardak', stockQuantity: 85, minStockAlert: 15, isAvailable: true },
-  { id: 'item-5', categoryId: 'cat-1', name: 'Salep', description: 'Tarçın ikramlı sıcak hakiki salep', price: 95, costPrice: 18, unit: 'Fincan', stockQuantity: 40, minStockAlert: 10, isAvailable: true },
+  { id: 'item-1', categoryId: 'cat-1', name: 'Demleme Çay', description: 'Taze Karadeniz demleme çayı', price: 35, costPrice: 4, unit: 'Bardak', stockQuantity: 350, minStockAlert: 50, isAvailable: true, recipe: [{ stockItemId: 'stk-2', amount: 0.005 }] },
+  { id: 'item-2', categoryId: 'cat-1', name: 'Türk Kahvesi', description: 'Geleneksel közde Türk kahvesi, lokum ile', price: 75, costPrice: 12, unit: 'Fincan', stockQuantity: 120, minStockAlert: 20, isAvailable: true, recipe: [{ stockItemId: 'stk-1', amount: 0.01 }] },
+  { id: 'item-3', categoryId: 'cat-1', name: 'Espresso', description: 'Tek shot yoğun %100 Arabica espresso', price: 80, costPrice: 15, unit: 'Fincan', stockQuantity: 200, minStockAlert: 30, isAvailable: true, recipe: [{ stockItemId: 'stk-1', amount: 0.008 }] },
+  { id: 'item-4', categoryId: 'cat-1', name: 'Caffè Latte', description: 'Espresso, buharla ısıtılmış taze süt ve kadifemsi köpük', price: 110, costPrice: 22, unit: 'Bardak', stockQuantity: 85, minStockAlert: 15, isAvailable: true, recipe: [{ stockItemId: 'stk-1', amount: 0.008 }, { stockItemId: 'stk-3', amount: 0.15 }] },
+  { id: 'item-5', categoryId: 'cat-1', name: 'Salep', description: 'Tarçın ikramlı sıcak hakiki salep', price: 95, costPrice: 18, unit: 'Fincan', stockQuantity: 40, minStockAlert: 10, isAvailable: true, recipe: [{ stockItemId: 'stk-3', amount: 0.18 }] },
 
   // Soğuk İçecekler
   { id: 'item-6', categoryId: 'cat-2', name: 'Ev Yapımı Limonata', description: 'Taze nane yaprakları ile buzlu limonata', price: 90, costPrice: 15, unit: 'Bardak', stockQuantity: 65, minStockAlert: 15, isAvailable: true },
-  { id: 'item-7', categoryId: 'cat-2', name: 'Iced Latte', description: 'Buzlu sütlü espresso soğuk kahve', price: 120, costPrice: 24, unit: 'Bardak', stockQuantity: 90, minStockAlert: 20, isAvailable: true },
+  { id: 'item-7', categoryId: 'cat-2', name: 'Iced Latte', description: 'Buzlu sütlü espresso soğuk kahve', price: 120, costPrice: 24, unit: 'Bardak', stockQuantity: 90, minStockAlert: 20, isAvailable: true, recipe: [{ stockItemId: 'stk-1', amount: 0.008 }, { stockItemId: 'stk-3', amount: 0.15 }] },
   { id: 'item-8', categoryId: 'cat-2', name: 'Taze Sıkma Portakal Suyu', description: '%100 doğal sıkma portakal suyu', price: 110, costPrice: 30, unit: 'Bardak', stockQuantity: 30, minStockAlert: 10, isAvailable: true },
-  { id: 'item-9', categoryId: 'cat-2', name: 'Kutu İçecekler (Cola/Fanta/Gazoz)', description: '330ml kutu gazlı içecek', price: 65, costPrice: 25, unit: 'Kutu', stockQuantity: 140, minStockAlert: 25, isAvailable: true },
+  { id: 'item-9', categoryId: 'cat-2', name: 'Kutu İçecekler (Cola/Fanta/Gazoz)', description: '330ml kutu gazlı içecek', price: 65, costPrice: 25, unit: 'Kutu', stockQuantity: 140, minStockAlert: 25, isAvailable: true, recipe: [{ stockItemId: 'stk-10', amount: 1 }] },
 
   // Kahvaltılıklar
-  { id: 'item-10', categoryId: 'cat-3', name: 'Serpme Serpme Serpme Kahvaltı (2 Kişilik)', description: 'Peynir çeşitleri, zeytin, reçeller, bal-kaymak, menemen, patates kızartması ve sınırsız çay', price: 650, costPrice: 180, unit: 'Porsiyon', stockQuantity: 25, minStockAlert: 5, isAvailable: true },
-  { id: 'item-11', categoryId: 'cat-3', name: 'Kaşarlı Sucuklu Menemen', description: 'Köy yumurtası, taze domates, biber, kaşar ve kasap sucuk', price: 185, costPrice: 45, unit: 'Porsiyon', stockQuantity: 45, minStockAlert: 10, isAvailable: true },
-  { id: 'item-12', categoryId: 'cat-3', name: 'Fırınlanmış Kaşarlı Tost', description: 'Ekşi mayalı ekmekte bol kaşar ve patates cipsi ile', price: 140, costPrice: 32, unit: 'Adet', stockQuantity: 60, minStockAlert: 12, isAvailable: true },
+  { id: 'item-10', categoryId: 'cat-3', name: 'Serpme Serpme Serpme Kahvaltı (2 Kişilik)', description: 'Peynir çeşitleri, zeytin, reçeller, bal-kaymak, menemen, patates kızartması ve sınırsız çay', price: 650, costPrice: 180, unit: 'Porsiyon', stockQuantity: 25, minStockAlert: 5, isAvailable: true, recipe: [{ stockItemId: 'stk-9', amount: 4 }, { stockItemId: 'stk-6', amount: 0.08 }, { stockItemId: 'stk-7', amount: 0.2 }, { stockItemId: 'stk-2', amount: 0.02 }] },
+  { id: 'item-11', categoryId: 'cat-3', name: 'Kaşarlı Sucuklu Menemen', description: 'Köy yumurtası, taze domates, biber, kaşar ve kasap sucuk', price: 185, costPrice: 45, unit: 'Porsiyon', stockQuantity: 45, minStockAlert: 10, isAvailable: true, recipe: [{ stockItemId: 'stk-9', amount: 2 }, { stockItemId: 'stk-6', amount: 0.04 }] },
+  { id: 'item-12', categoryId: 'cat-3', name: 'Fırınlanmış Kaşarlı Tost', description: 'Ekşi mayalı ekmekte bol kaşar ve patates cipsi ile', price: 140, costPrice: 32, unit: 'Adet', stockQuantity: 60, minStockAlert: 12, isAvailable: true, recipe: [{ stockItemId: 'stk-6', amount: 0.05 }] },
 
   // Ana Yemekler
-  { id: 'item-13', categoryId: 'cat-4', name: 'Izgara Kasap Köfte', description: 'Pirinç pilavı, ızgara domates, biber ve elma dilim patates ile', price: 340, costPrice: 95, unit: 'Porsiyon', stockQuantity: 35, minStockAlert: 8, isAvailable: true },
-  { id: 'item-14', categoryId: 'cat-4', name: 'Kremalı Mantarlı Tavuk Sote', description: 'Jülyen tavuk pirzola, taze kültür mantarı, krema ve penne makarna', price: 290, costPrice: 75, unit: 'Porsiyon', stockQuantity: 28, minStockAlert: 6, isAvailable: true },
+  { id: 'item-13', categoryId: 'cat-4', name: 'Izgara Kasap Köfte', description: 'Pirinç pilavı, ızgara domates, biber ve elma dilim patates ile', price: 340, costPrice: 95, unit: 'Porsiyon', stockQuantity: 35, minStockAlert: 8, isAvailable: true, recipe: [{ stockItemId: 'stk-4', amount: 0.18 }, { stockItemId: 'stk-7', amount: 0.1 }] },
+  { id: 'item-14', categoryId: 'cat-4', name: 'Kremalı Mantarlı Tavuk Sote', description: 'Jülyen tavuk pirzola, taze kültür mantarı, krema ve penne makarna', price: 290, costPrice: 75, unit: 'Porsiyon', stockQuantity: 28, minStockAlert: 6, isAvailable: true, recipe: [{ stockItemId: 'stk-5', amount: 0.15 }] },
   { id: 'item-15', categoryId: 'cat-4', name: 'Penne Arrabbiata', description: 'Acılı domates sos, siyah zeytin, fesleğen ve parmesan peyniri', price: 220, costPrice: 50, unit: 'Porsiyon', stockQuantity: 50, minStockAlert: 10, isAvailable: true },
 
   // Burger & Atıştırmalık
-  { id: 'item-16', categoryId: 'cat-5', name: 'Cheeseburger Menü', description: '150g dana köfte, cheddar peyniri, karamelize soğan, patates kızartması ve içecek', price: 320, costPrice: 85, unit: 'Porsiyon', stockQuantity: 40, minStockAlert: 10, isAvailable: true },
-  { id: 'item-17', categoryId: 'cat-5', name: 'Çıtır Tavuk Sepeti', description: 'Panko kaplı tavuk parçaları, soğan halkaları, sosis ve özel soslar', price: 260, costPrice: 65, unit: 'Porsiyon', stockQuantity: 32, minStockAlert: 8, isAvailable: true },
-  { id: 'item-18', categoryId: 'cat-5', name: 'Baharatlı Patates Kızartması', description: 'Özel baharat çeşnili büyük boy patates', price: 110, costPrice: 20, unit: 'Porsiyon', stockQuantity: 80, minStockAlert: 15, isAvailable: true },
+  { id: 'item-16', categoryId: 'cat-5', name: 'Cheeseburger Menü', description: '150g dana köfte, cheddar peyniri, karamelize soğan, patates kızartması ve içecek', price: 320, costPrice: 85, unit: 'Porsiyon', stockQuantity: 40, minStockAlert: 10, isAvailable: true, recipe: [{ stockItemId: 'stk-4', amount: 0.15 }, { stockItemId: 'stk-6', amount: 0.03 }, { stockItemId: 'stk-7', amount: 0.12 }] },
+  { id: 'item-17', categoryId: 'cat-5', name: 'Çıtır Tavuk Sepeti', description: 'Panko kaplı tavuk parçaları, soğan halkaları, sosis ve özel soslar', price: 260, costPrice: 65, unit: 'Porsiyon', stockQuantity: 32, minStockAlert: 8, isAvailable: true, recipe: [{ stockItemId: 'stk-5', amount: 0.18 }, { stockItemId: 'stk-7', amount: 0.1 }] },
+  { id: 'item-18', categoryId: 'cat-5', name: 'Baharatlı Patates Kızartması', description: 'Özel baharat çeşnili büyük boy patates', price: 110, costPrice: 20, unit: 'Porsiyon', stockQuantity: 80, minStockAlert: 15, isAvailable: true, recipe: [{ stockItemId: 'stk-7', amount: 0.2 }] },
 
   // Tatlılar
-  { id: 'item-19', categoryId: 'cat-6', name: 'San Sebastian Cheesecake', description: 'Eritilmiş Belçika çikolatası sosu eşliğinde', price: 195, costPrice: 50, unit: 'Dilim', stockQuantity: 18, minStockAlert: 5, isAvailable: true },
-  { id: 'item-20', categoryId: 'cat-6', name: 'Sıcak Fırın Soufflé', description: 'Vanilyalı dondurma topu ile taze pişmiş çikolatalı sufle', price: 175, costPrice: 42, unit: 'Adet', stockQuantity: 14, minStockAlert: 4, isAvailable: true },
+  { id: 'item-19', categoryId: 'cat-6', name: 'San Sebastian Cheesecake', description: 'Eritilmiş Belçika çikolatası sosu eşliğinde', price: 195, costPrice: 50, unit: 'Dilim', stockQuantity: 18, minStockAlert: 5, isAvailable: true, recipe: [{ stockItemId: 'stk-8', amount: 0.05 }] },
+  { id: 'item-20', categoryId: 'cat-6', name: 'Sıcak Fırın Soufflé', description: 'Vanilyalı dondurma topu ile taze pişmiş çikolatalı sufle', price: 175, costPrice: 42, unit: 'Adet', stockQuantity: 14, minStockAlert: 4, isAvailable: true, recipe: [{ stockItemId: 'stk-8', amount: 0.04 }] },
   { id: 'item-21', categoryId: 'cat-6', name: 'Fıstıklı Havuç Dilim Baklava', description: 'Gaziantep fıstıklı havuç dilimi baklava (1 Adet)', price: 210, costPrice: 70, unit: 'Dilim', stockQuantity: 8, minStockAlert: 5, isAvailable: true },
 ];
 
@@ -174,6 +174,7 @@ export const initialStockItems: StockItem[] = [
   { id: 'stk-7', name: 'Patates (Dondurulmuş 9mm)', category: 'Sebze & Donuk', quantity: 45.0, unit: 'kg', minThreshold: 15.0, costPerUnit: 55, lastUpdated: new Date().toISOString(), unitBarcode: '869000100701', boxBarcode: '869000100799', itemsPerBox: 5, boxUnitName: 'Paket (5kg)' },
   { id: 'stk-8', name: 'Belçika Çikolatası Sosu', category: 'Tatlı Malzemeleri', quantity: 2.2, unit: 'kg', minThreshold: 3.0, costPerUnit: 390, lastUpdated: new Date().toISOString(), unitBarcode: '869000100801', boxBarcode: '869000100899', itemsPerBox: 4, boxUnitName: 'Koli (4 Bidon)' },
   { id: 'stk-9', name: 'Köy Yumurtası (30Lı Viyol)', category: 'Kahvaltılık', quantity: 180, unit: 'adet', minThreshold: 60, costPerUnit: 4.5, lastUpdated: new Date().toISOString(), unitBarcode: '869000100901', boxBarcode: '869000100999', itemsPerBox: 30, boxUnitName: 'Viyol (30 Adet)' },
+  { id: 'stk-10', name: 'Kutu İçecekler (Cola/Fanta/Gazoz)', category: 'Soğuk İçecekler', quantity: 140, unit: 'kutu', minThreshold: 25, costPerUnit: 25, lastUpdated: new Date().toISOString(), unitBarcode: '869000101001', boxBarcode: '869000101099', itemsPerBox: 24, boxUnitName: 'Koli (24 Kutu)' },
 ];
 
 export const initialOrders: Order[] = [
