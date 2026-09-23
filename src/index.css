@@ -17,7 +17,8 @@
 }
 
 /* Thermal & Standard Print helper classes */
-#thermal-pos-print-slip {
+#thermal-pos-print-slip,
+#thermal-zreport-print-slip {
   display: none;
 }
 
@@ -35,39 +36,55 @@
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
     background: #ffffff !important;
     color: #000000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* When printing thermal POS receipt, hide React root completely to guarantee 1 single slip */
-  body.printing-receipt #root {
+  /* When printing thermal POS receipt or Z-report, hide React root completely to guarantee 1 single continuous slip */
+  body.printing-receipt #root,
+  body.printing-zreport #root {
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
   }
 
-  body.printing-receipt #thermal-pos-print-slip {
+  body.printing-receipt #thermal-pos-print-slip,
+  body.printing-zreport #thermal-zreport-print-slip {
     display: block !important;
+    visibility: visible !important;
     position: static !important;
     width: 72mm !important;
     max-width: 72mm !important;
+    min-width: 72mm !important;
     margin: 0 auto !important;
-    padding: 1mm 1mm 8mm 1mm !important;
+    padding: 1mm 1mm 5mm 1mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     box-sizing: border-box !important;
     font-family: Arial, "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif !important;
     -webkit-font-smoothing: antialiased !important;
     text-rendering: optimizeLegibility !important;
-    page-break-after: avoid !important;
+    /* Continuous roll streaming: NEVER force arbitrary page splits regardless of item count */
+    page-break-inside: auto !important;
+    break-inside: auto !important;
     page-break-before: avoid !important;
-    page-break-inside: avoid !important;
-    break-after: avoid !important;
     break-before: avoid !important;
-    break-inside: avoid !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
-  #thermal-pos-print-slip * {
+  #thermal-pos-print-slip *,
+  #thermal-zreport-print-slip * {
     color: #000000 !important;
     -webkit-text-fill-color: #000000 !important;
     border-color: #000000 !important;
@@ -76,15 +93,24 @@
     box-sizing: border-box !important;
   }
 
-  /* General fallback for non-portal print areas */
-  body:not(.printing-receipt) * {
+  /* Unbreakable individual items and structural blocks (never cut a line in half) */
+  .thermal-item-row,
+  .thermal-unbreakable-block {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  /* General fallback for non-portal print areas (e.g. A4 detailed reports) */
+  body:not(.printing-receipt):not(.printing-zreport) * {
     visibility: hidden !important;
   }
 
-  body:not(.printing-receipt) .print-area,
-  body:not(.printing-receipt) .print-area *,
-  body:not(.printing-receipt) .print-detailed-area,
-  body:not(.printing-receipt) .print-detailed-area * {
+  body:not(.printing-receipt):not(.printing-zreport) .print-area,
+  body:not(.printing-receipt):not(.printing-zreport) .print-area *,
+  body:not(.printing-receipt):not(.printing-zreport) .print-detailed-area,
+  body:not(.printing-receipt):not(.printing-zreport) .print-detailed-area * {
     visibility: visible !important;
     color: #000000 !important;
     -webkit-text-fill-color: #000000 !important;
@@ -105,12 +131,11 @@
     z-index: 999999 !important;
     font-family: Arial, "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif !important;
     font-weight: 700 !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    page-break-after: avoid !important;
-    break-after: avoid !important;
-    page-break-before: avoid !important;
-    break-before: avoid !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   .print-detailed-area {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, CreditCard, Banknote, X, Printer } from 'lucide-react';
 import { StorageService } from './services/storage';
-import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification } from './types';
+import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification, DailyZReport } from './types';
 import { initialOrders } from './data/initialData';
 
 import { Header } from './components/Header';
@@ -16,6 +16,8 @@ import { LoginScreen } from './components/LoginScreen';
 import { UnpaidDebtsModal } from './components/UnpaidDebtsModal';
 import { CriticalStockModal } from './components/CriticalStockModal';
 import { AddInvoiceModal } from './components/AddInvoiceModal';
+import { UserManualModal } from './components/UserManualModal';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { KitchenReadyAlert } from './components/KitchenReadyAlert';
 import { playKitchenReadyChime, triggerDesktopNotification } from './utils/audioAlert';
 
@@ -28,6 +30,7 @@ export default function App() {
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>([]);
   const [expenseInvoices, setExpenseInvoices] = useState<ExpenseInvoice[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [dailyZReports, setDailyZReports] = useState<DailyZReport[]>(() => StorageService.getDailyZReports());
   const [users, setUsers] = useState<AppUser[]>([]);
   const [settings, setSettings] = useState<RestaurantSettings>(StorageService.getSettings());
   const [notifications, setNotifications] = useState<KitchenNotification[]>(() => StorageService.getKitchenNotifications());
@@ -46,11 +49,26 @@ export default function App() {
   const [transferSourceTable, setTransferSourceTable] = useState<Table | null>(null);
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = React.useCallback((msg: string, duration = 3500) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToastMessage(msg);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, duration);
+  }, []);
+
   const [modalSessionKey, setModalSessionKey] = useState<number>(0);
 
   // Unpaid Debts Modal & Payment
   const [showUnpaidDebtsModal, setShowUnpaidDebtsModal] = useState<boolean>(false);
   const [showCriticalStockModal, setShowCriticalStockModal] = useState<boolean>(false);
+  const [showUserManualModal, setShowUserManualModal] = useState<boolean>(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
   const [debtPaymentModalOrder, setDebtPaymentModalOrder] = useState<Order | null>(null);
   const [debtPaymentType, setDebtPaymentType] = useState<'nakit' | 'kredi_karti'>('kredi_karti');
 
@@ -72,12 +90,11 @@ export default function App() {
       setStockItems(StorageService.getStockItems());
       setPurchaseInvoices(StorageService.getPurchaseInvoices());
       setExpenseInvoices(StorageService.getExpenseInvoices());
+      setDailyZReports(StorageService.getDailyZReports());
+
       let localOrders = StorageService.getOrders();
-      if (!localOrders || localOrders.length === 0 || !localOrders.some((o) => o.status === 'closed')) {
-        const closedInitial = initialOrders.filter((o) => o.status === 'closed');
-        const existingIds = new Set(localOrders.map((o) => o.id));
-        const toAdd = closedInitial.filter((o) => !existingIds.has(o.id));
-        localOrders = [...localOrders, ...toAdd];
+      if (!localOrders || localOrders.length === 0) {
+        localOrders = initialOrders;
         StorageService.saveOrders(localOrders, false);
       }
       setOrders(localOrders);
@@ -94,16 +111,9 @@ export default function App() {
         if (serverData.stockItems) setStockItems(serverData.stockItems);
         if (serverData.purchaseInvoices) setPurchaseInvoices(serverData.purchaseInvoices);
         if (serverData.expenseInvoices) setExpenseInvoices(serverData.expenseInvoices);
+        if (serverData.dailyZReports) setDailyZReports(serverData.dailyZReports);
         if (serverData.orders) {
-          let serverOrders = serverData.orders;
-          if (!serverOrders.some((o) => o.status === 'closed')) {
-            const closedInitial = initialOrders.filter((o) => o.status === 'closed');
-            const existingIds = new Set(serverOrders.map((o) => o.id));
-            const toAdd = closedInitial.filter((o) => !existingIds.has(o.id));
-            serverOrders = [...serverOrders, ...toAdd];
-            StorageService.saveOrders(serverOrders, true);
-          }
-          setOrders(serverOrders);
+          setOrders(serverData.orders);
         }
         if (serverData.settings) setSettings(serverData.settings);
         if (serverData.users) setUsers(serverData.users);
@@ -115,15 +125,8 @@ export default function App() {
         }
       }
 
-      // Restore user session if saved
-      const savedUserId = localStorage.getItem('pos_current_user_id');
-      const activeUsersList = serverData?.users || loadedUsers;
-      if (savedUserId && activeUsersList.length > 0) {
-        const found = activeUsersList.find((u) => u.id === savedUserId);
-        if (found) {
-          setCurrentUser(found);
-        }
-      }
+      // Enforce mandatory user login on every open/reload (do not restore last logged-in user)
+      localStorage.removeItem('pos_current_user_id');
     };
 
     loadInitialData();
@@ -191,7 +194,7 @@ export default function App() {
   // Handle Login Success
   const handleLoginSuccess = (user: AppUser) => {
     setCurrentUser(user);
-    localStorage.setItem('pos_current_user_id', user.id);
+    // Session is kept in memory only; program close or reload enforces login again
 
     // Route active view automatically based on user's highest permissions
     if (user.role === 'kitchen' || (!user.permissions.canTakeOrder && user.role !== 'admin')) {
@@ -205,16 +208,38 @@ export default function App() {
       setActiveRole('admin');
     }
 
-    setToastMessage(`${user.name} olarak giriş yapıldı.`);
-    setTimeout(() => setToastMessage(null), 3000);
+    showToast(`${user.name} olarak giriş yapıldı.`, 3000);
   };
 
   // Handle Logout
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem('pos_current_user_id');
-    setToastMessage('Oturum kapatıldı.');
-    setTimeout(() => setToastMessage(null), 2500);
+    showToast('Oturum kapatıldı.', 2500);
+  };
+
+  // Handle User Change Password / PIN
+  const handleUpdateCurrentUserPin = async (newPin: string) => {
+    if (!currentUser) return;
+    const updatedUsers = users.map((u) =>
+      u.id === currentUser.id ? { ...u, pinCode: newPin } : u
+    );
+    const updatedCurrentUser = { ...currentUser, pinCode: newPin };
+    setUsers(updatedUsers);
+    setCurrentUser(updatedCurrentUser);
+    StorageService.saveUsers(updatedUsers);
+
+    // Record audit log
+    StorageService.addSystemLog({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      action: 'Şifre Değiştirildi',
+      details: `${currentUser.name} (@${currentUser.username}) kendi PIN kodunu başarıyla güncelledi.`,
+      category: 'system',
+    });
+
+    showToast('Şifreniz / PIN kodunuz başarıyla güncellendi!', 3000);
   };
 
   // Sync to storage on state changes
@@ -399,10 +424,7 @@ export default function App() {
       ? `Hesap İstendi! (${table.number})`
       : `✓ Sipariş Kaydedildi & Mutfağa İletildi! (${table.number})`;
 
-    setToastMessage(toastText);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 2500);
+    showToast(toastText, 2500);
   };
 
   // Mark Customer Order as Unpaid Debt ("Ödemeden Gitti")
@@ -442,6 +464,8 @@ export default function App() {
             waiterName,
             customerNotes,
             status: 'unpaid_debt' as const,
+            debtOriginDate: o.debtOriginDate || new Date().toISOString().slice(0, 10),
+            isCarriedOverDebt: o.isCarriedOverDebt || false,
           };
         }
         return o;
@@ -464,6 +488,8 @@ export default function App() {
         waiterName,
         customerNotes,
         createdAt: new Date().toISOString(),
+        debtOriginDate: new Date().toISOString().slice(0, 10),
+        isCarriedOverDebt: false,
       };
       updatedOrders.push(newOrder);
     }
@@ -491,10 +517,7 @@ export default function App() {
     setSelectedTable({ ...updatedTableObj });
 
     // 2-second notification toast "Borç Yazıldı"
-    setToastMessage(`Borç Yazıldı: "${customerNotes}" (${table.number})`);
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 2000);
+    showToast(`Borç Yazıldı: "${customerNotes}" (${table.number})`, 2500);
   };
 
   // Close & Pay Payment Handler
@@ -507,12 +530,14 @@ export default function App() {
     const updatedOrders = orders.map((o) => {
       if (o.id === orderId) {
         closedTableId = o.tableId;
+        const wasDebt = o.status === 'unpaid_debt';
         return {
           ...o,
           status: 'closed' as const,
           closedAt: new Date().toISOString(),
           paymentType,
           totalAmount: amount,
+          debtCollectedAt: wasDebt ? new Date().toISOString() : o.debtCollectedAt,
         };
       }
       return o;
@@ -533,6 +558,130 @@ export default function App() {
     setOrders(updatedOrders);
     setTables(updatedTables);
     saveAll(zones, updatedTables, categories, menuItems, stockItems, updatedOrders, settings);
+  };
+
+  // Handle Day Closure & Z-Report sealing
+  const handleCloseDay = (notes?: string): DailyZReport => {
+    // Collect all closed orders that are not yet sealed into a Z-report
+    const unsealedOrders = orders.filter((o) => o.status === 'closed' && !o.zReportId);
+    
+    const nextZNum = (dailyZReports.length || 0) + 1;
+    const zReportNo = `Z-${String(nextZNum).padStart(4, '0')}`;
+    const nowIso = new Date().toISOString();
+    const todayDateStr = nowIso.slice(0, 10);
+
+    const totalRevenue = unsealedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const totalDiscounts = unsealedOrders.reduce((sum, o) => sum + o.discountAmount, 0);
+    const totalTax = unsealedOrders.reduce((sum, o) => sum + o.taxAmount, 0);
+
+    const totalCost = unsealedOrders.reduce((sum, o) => {
+      return (
+        sum +
+        o.items.reduce((itemSum, item) => {
+          const matchedMenuItem = menuItems.find((m) => m.id === item.menuItemId || m.name === item.name);
+          const unitCost = item.costPrice > 0 ? item.costPrice : (matchedMenuItem?.costPrice || 0);
+          return itemSum + unitCost * item.quantity;
+        }, 0)
+      );
+    }, 0);
+
+    const estimatedProfit = Math.max(0, totalRevenue - totalCost);
+
+    const paymentBreakdown = {
+      kredi_karti: unsealedOrders.filter((o) => o.paymentType === 'kredi_karti').reduce((s, o) => s + o.totalAmount, 0),
+      nakit: unsealedOrders.filter((o) => o.paymentType === 'nakit').reduce((s, o) => s + o.totalAmount, 0),
+      yemek_karti: unsealedOrders.filter((o) => o.paymentType === 'yemek_karti').reduce((s, o) => s + o.totalAmount, 0),
+    };
+
+    const itemSalesMap = new Map<string, { name: string; qty: number; revenue: number }>();
+    unsealedOrders.forEach((o) => {
+      o.items.forEach((i) => {
+        const existing = itemSalesMap.get(i.name) || { name: i.name, qty: 0, revenue: 0 };
+        itemSalesMap.set(i.name, {
+          name: i.name,
+          qty: existing.qty + i.quantity,
+          revenue: existing.revenue + i.price * i.quantity,
+        });
+      });
+    });
+    const itemsSold = Array.from(itemSalesMap.values()).sort((a, b) => b.qty - a.qty);
+
+    const activeOpenTables = tables.filter((t) => t.status === 'occupied' || t.status === 'bill_requested');
+    const openOrders = orders.filter((o) => o.status === 'open');
+    const devredenTutar = openOrders.reduce((s, o) => s + o.totalAmount, 0);
+
+    // Active unpaid debts (Veresiye) carried over across days until collected
+    const unpaidDebtOrders = orders.filter((o) => o.status === 'unpaid_debt');
+    const devredenBorcluSayisi = unpaidDebtOrders.length;
+    const devredenBorcTutari = unpaidDebtOrders.reduce((s, o) => s + o.totalAmount, 0);
+    const devredenBorclular = unpaidDebtOrders.map((d) => ({
+      orderId: d.id,
+      customerName: d.customerNotes || 'İsimsiz Müşteri',
+      tableName: d.tableName,
+      amount: d.totalAmount,
+      createdAt: d.createdAt,
+    }));
+
+    const newZReport: DailyZReport = {
+      id: `zrep-${Date.now()}-${nextZNum}`,
+      zNumber: nextZNum,
+      zReportNo,
+      date: todayDateStr,
+      openedAt: unsealedOrders[0]?.createdAt || nowIso,
+      closedAt: nowIso,
+      closedByUserId: currentUser?.id,
+      closedByUserName: currentUser?.name || 'Kasa Yetkilisi',
+      totalRevenue,
+      ordersCount: unsealedOrders.length,
+      paymentBreakdown,
+      totalTax,
+      totalDiscounts,
+      totalCost,
+      estimatedProfit,
+      devredenMasaSayisi: activeOpenTables.length,
+      devredenTutar,
+      devredenBorcluSayisi,
+      devredenBorcTutari,
+      devredenBorclular,
+      itemsSold,
+      ordersSnapshot: unsealedOrders,
+    };
+
+    // Mark unsealed closed orders with this zReportId, and flag unpaid debts as carried over
+    const unsealedIds = new Set(unsealedOrders.map((o) => o.id));
+    const updatedOrders = orders.map((o) => {
+      if (unsealedIds.has(o.id)) {
+        return { ...o, zReportId: newZReport.id };
+      }
+      if (o.status === 'unpaid_debt') {
+        return {
+          ...o,
+          isCarriedOverDebt: true,
+          debtOriginDate: o.debtOriginDate || o.createdAt?.slice(0, 10) || todayDateStr,
+        };
+      }
+      return o;
+    });
+
+    const updatedReports = [newZReport, ...dailyZReports];
+
+    setOrders(updatedOrders);
+    setDailyZReports(updatedReports);
+
+    StorageService.saveOrders(updatedOrders, true);
+    StorageService.saveDailyZReports(updatedReports, true);
+
+    StorageService.addSystemLog({
+      userId: currentUser?.id || 'admin',
+      userName: currentUser?.name || 'Kasa Sorumlusu',
+      userRole: currentUser?.role || 'admin',
+      action: 'Günü Kapatma (Z-Raporu)',
+      details: `${zReportNo} gün sonu Z-Raporu kesildi. ${unsealedOrders.length} adisyon kapatıldı, toplam ciro: ${totalRevenue.toLocaleString('tr-TR')} ₺`,
+      category: 'system',
+    });
+
+    showToast(`GÜN BAŞARIYLA KAPATILDI! ${zReportNo} nolu Z-Raporu arşive kaydedildi. Yeni satışlar 0 ₺ ciro ile başlıyor.`, 3500);
+    return newZReport;
   };
 
   // Toggle Table Request Bill Status
@@ -600,8 +749,7 @@ export default function App() {
         `🔔 Mutfak Hazır (${createdNotif.tableName})`,
         `${createdNotif.items[0]?.quantity}x ${createdNotif.items[0]?.name} servise hazır.`
       );
-      setToastMessage(`✓ ${createdNotif.tableName} - ${createdNotif.items[0]?.name} hazır! Garsona bildirildi.`);
-      setTimeout(() => setToastMessage(null), 3000);
+      showToast(`✓ ${createdNotif.tableName} - ${createdNotif.items[0]?.name} hazır! Garsona bildirildi.`, 3000);
     }
   };
 
@@ -655,8 +803,7 @@ export default function App() {
         `🔔 Mutfak Hazır (${createdNotif.tableName})`,
         `Tüm masa siparişleri (${createdNotif.items.length} kalem) servise hazır.`
       );
-      setToastMessage(`✓ ${createdNotif.tableName} - Tüm siparişler hazır! Garsona bildirildi.`);
-      setTimeout(() => setToastMessage(null), 3000);
+      showToast(`✓ ${createdNotif.tableName} - Tüm siparişler hazır! Garsona bildirildi.`, 3000);
     }
   };
 
@@ -687,8 +834,7 @@ export default function App() {
     setNotifications([]);
     setActiveReadyAlert(null);
     alertedNotificationIdsRef.current.clear();
-    setToastMessage('✓ Mutfak bildirimleri temizlendi.');
-    setTimeout(() => setToastMessage(null), 2500);
+    showToast('✓ Mutfak bildirimleri temizlendi.', 2500);
   };
 
   const handleDeleteNotification = (id: string) => {
@@ -856,8 +1002,10 @@ export default function App() {
         onTabChange={(tab) => setActiveTab(tab)}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onOpenChangePasswordModal={() => setShowChangePasswordModal(true)}
         onOpenCriticalStockModal={() => setShowCriticalStockModal(true)}
         onOpenAddInvoiceModal={() => setShowAddInvoiceModal(true)}
+        onOpenUserManualModal={() => setShowUserManualModal(true)}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
         onClearNotifications={handleClearNotifications}
@@ -866,7 +1014,7 @@ export default function App() {
       />
 
       {/* Main Body Content */}
-      <main className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-3 sm:py-6 flex-1 overflow-x-hidden">
+      <main className="w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6 py-2.5 sm:py-5 flex-1 overflow-x-hidden">
         {activeTab === 'tables' && (
           <TableGrid
             tables={tables}
@@ -903,6 +1051,12 @@ export default function App() {
             settings={settings}
             users={users}
             currentUser={currentUser}
+            dailyZReports={dailyZReports}
+            onCloseDay={handleCloseDay}
+            onUpdateDailyZReports={(newReports) => {
+              setDailyZReports(newReports);
+              StorageService.saveDailyZReports(newReports);
+            }}
             onAddPurchaseInvoice={handleAddPurchaseInvoice}
             onAddExpenseInvoice={handleAddExpenseInvoice}
             onUpdatePurchaseInvoices={(newInvoices) => {
@@ -953,8 +1107,8 @@ export default function App() {
       </main>
 
       {/* Global Application Footer */}
-      <footer className="mt-auto border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 py-4 px-4 sm:px-6 lg:px-8 text-center text-xs text-stone-500 dark:text-stone-400">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+      <footer className="mt-auto border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 py-3 sm:py-4 px-2 sm:px-4 lg:px-6 text-center text-xs text-stone-500 dark:text-stone-400">
+        <div className="w-full max-w-[1720px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-white p-1 border border-stone-200 dark:border-stone-700 flex items-center justify-center shrink-0 shadow-xs">
               <img src={settings.logoUrl || '/logo.svg'} alt={settings.name} className="w-full h-full object-contain" />
@@ -1081,8 +1235,7 @@ export default function App() {
                   handleClosePayment(debtPaymentModalOrder.id, debtPaymentType, debtPaymentModalOrder.totalAmount);
                   setDebtPaymentModalOrder(null);
                   setShowUnpaidDebtsModal(false);
-                  setToastMessage(`"${debtPaymentModalOrder.customerNotes}" müşteri borcu tahsil edildi!`);
-                  setTimeout(() => setToastMessage(null), 3000);
+                  showToast(`"${debtPaymentModalOrder.customerNotes}" müşteri borcu tahsil edildi!`, 3000);
                 }}
                 className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-colors"
               >
@@ -1155,6 +1308,23 @@ export default function App() {
         }}
       />
 
+      {/* In-App Interactive User Manual Modal */}
+      <UserManualModal
+        isOpen={showUserManualModal}
+        onClose={() => setShowUserManualModal(false)}
+        settings={settings}
+      />
+
+      {/* Change Password / PIN Modal */}
+      {currentUser && (
+        <ChangePasswordModal
+          isOpen={showChangePasswordModal}
+          onClose={() => setShowChangePasswordModal(false)}
+          currentUser={currentUser}
+          onUpdatePin={handleUpdateCurrentUserPin}
+        />
+      )}
+
       {/* Waiter Kitchen Ready Notification Alert Popup */}
       <KitchenReadyAlert
         notification={activeReadyAlert}
@@ -1163,13 +1333,39 @@ export default function App() {
         onMarkRead={(id) => handleMarkNotificationRead(id)}
       />
 
-      {/* 2-Second Sipariş Alındı Notification Toast */}
+      {/* Auto-Dismiss & Interactive Notification Toast */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-100 bg-emerald-600 text-white font-extrabold text-base sm:text-lg px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border-2 border-emerald-400 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
-          <div className="bg-white/20 p-1.5 rounded-xl">
-            <CheckCircle2 className="w-6 h-6 text-white" />
+        <div
+          onClick={() => {
+            if (toastTimeoutRef.current) {
+              clearTimeout(toastTimeoutRef.current);
+              toastTimeoutRef.current = null;
+            }
+            setToastMessage(null);
+          }}
+          className="fixed top-5 left-1/2 -translate-x-1/2 z-100 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm sm:text-base px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 border-2 border-emerald-400 animate-in fade-in slide-in-from-top-4 duration-300 cursor-pointer transition-all max-w-[94vw] sm:max-w-xl group pointer-events-auto select-none"
+          role="alert"
+          title="Kapatmak için tıklayın"
+        >
+          <div className="bg-white/20 p-1.5 rounded-xl shrink-0 group-hover:scale-110 transition-transform">
+            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
-          <span>{toastMessage}</span>
+          <span className="flex-1 leading-snug">{toastMessage}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (toastTimeoutRef.current) {
+                clearTimeout(toastTimeoutRef.current);
+                toastTimeoutRef.current = null;
+              }
+              setToastMessage(null);
+            }}
+            className="p-1.5 hover:bg-white/20 rounded-xl text-white/80 hover:text-white transition-colors shrink-0 ml-1 cursor-pointer"
+            title="Bildirimi Kapat"
+          >
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
+          </button>
         </div>
       )}
 

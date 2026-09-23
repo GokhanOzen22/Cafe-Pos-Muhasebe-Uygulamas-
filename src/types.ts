@@ -128,6 +128,50 @@ export interface Order {
   createdAt: string;
   closedAt?: string;
   ticketTitle?: string;
+  zReportId?: string; // Hangi gün sonu Z-raporuna dahil edildiği
+  businessDate?: string; // "YYYY-MM-DD" Mali Gün
+  debtOriginDate?: string; // Borcun ilk oluştuğu gün ("YYYY-MM-DD")
+  isCarriedOverDebt?: boolean; // Önceki günden devreden borç mu
+  debtCollectedAt?: string; // Borcun tahsil edildiği an (ISO)
+}
+
+export interface DailyZReport {
+  id: string; // e.g. "zrep-20260923-0001"
+  zNumber: number; // 1, 2, 3...
+  zReportNo: string; // e.g. "Z-0001"
+  date: string; // "YYYY-MM-DD"
+  openedAt: string; // ISO
+  closedAt: string; // ISO
+  closedByUserId?: string;
+  closedByUserName: string;
+  totalRevenue: number;
+  ordersCount: number;
+  paymentBreakdown: {
+    nakit: number;
+    kredi_karti: number;
+    yemek_karti: number;
+  };
+  totalTax: number;
+  totalDiscounts: number;
+  totalCost: number;
+  estimatedProfit: number;
+  devredenMasaSayisi?: number;
+  devredenTutar?: number;
+  devredenBorcluSayisi?: number; // Tahsil edilene kadar sonraki günlere devreden borçlu adisyon sayısı
+  devredenBorcTutari?: number; // Tahsil edilene kadar sonraki günlere devreden toplam borç tutarı
+  devredenBorclular?: {
+    orderId: string;
+    customerName: string;
+    tableName: string;
+    amount: number;
+    createdAt: string;
+  }[];
+  itemsSold: {
+    name: string;
+    qty: number;
+    revenue: number;
+  }[];
+  ordersSnapshot: Order[];
 }
 
 export interface KitchenNotification {
@@ -154,6 +198,7 @@ export interface RestaurantSettings {
   address: string;
   phone: string;
   taxNumber: string;
+  taxOffice?: string; // Vergi Dairesi
   taxRatePercent: number; // Default 10%
   receiptHeaderNote: string;
   receiptFooterNote: string;
@@ -164,6 +209,30 @@ export interface RestaurantSettings {
   remoteWanPort?: number;
   printers?: PrinterDevice[];
   barcodeScanner?: BarcodeScannerConfig;
+  silentPrinting?: boolean; // Doğrudan sessiz yazdırma (yazıcı seçim diyaloğunu atlar)
+  selectedPrinterName?: string; // Tercih edilen yazıcı adı (örn: POS-80C)
+}
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron: boolean;
+      printDirect: (options?: {
+        silent?: boolean;
+        deviceName?: string;
+        copies?: number;
+      }) => Promise<{ success: boolean; failureReason?: string }>;
+      getPrinters: () => Promise<
+        Array<{
+          name: string;
+          displayName?: string;
+          isDefault?: boolean;
+          status?: number;
+        }>
+      >;
+      toggleFullScreen?: () => Promise<void>;
+    };
+  }
 }
 
 export interface UserPermissions {
@@ -175,6 +244,7 @@ export interface UserPermissions {
   canAddTable?: boolean;       // Yeni Masa Ekleme Yetkisi
   canManageInvoices?: boolean; // Fiş / Fatura & Gider Kaydı Yetkisi
   canViewReports: boolean;     // Rapor & Z-Raporu Görebilme
+  canCloseDay?: boolean;       // Günü Kapatma & Z-Raporu Kesme Yetkisi
   canManageStock: boolean;     // Stok & Hammadde Yönetimi
   canManageMenu: boolean;      // Menü & Fiyat Güncelleme
   canManageUsers: boolean;     // Kullanıcı & Yetki Yönetimi

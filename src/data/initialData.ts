@@ -371,6 +371,7 @@ export const defaultSettings: RestaurantSettings = {
   address: 'Büyük Altunhan Mah., Atatürk Caddesi No:1, Meriç / Edirne',
   phone: '+90 (284) 811 70 05',
   taxNumber: '6180054321',
+  taxOffice: 'Meriç Vergi Dairesi',
   taxRatePercent: 10,
   receiptHeaderNote: 'Meriç Belediyesi Sosyal Tesisleri — Hoş Geldiniz',
   receiptFooterNote: 'Meriç Belediyesi Tesisleri — Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz',
@@ -416,7 +417,9 @@ export const defaultSettings: RestaurantSettings = {
     prefix: '',
     suffix: 'ENTER',
     beepAlert: true,
-  }
+  },
+  silentPrinting: true,
+  selectedPrinterName: 'POS-80C',
 };
 
 export const initialPurchaseInvoices: PurchaseInvoice[] = [

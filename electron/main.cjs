@@ -1,7 +1,11 @@
-const { app, BrowserWindow, globalShortcut } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
+
+// Enable Kiosk Silent Printing in Chromium - automatically bypasses Windows Print Dialog
+app.commandLine.appendSwitch('kiosk-printing');
+app.commandLine.appendSwitch('disable-print-preview');
 
 let mainWindow = null;
 const PORT = process.env.PORT || 3000;
@@ -176,6 +180,7 @@ function createWindow() {
     backgroundColor: '#0c0a09',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
@@ -198,6 +203,53 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// Setup IPC handlers for silent direct printing
+ipcMain.handle('print-direct', async (event, options = {}) => {
+  if (!mainWindow) return { success: false, error: 'Ana pencere bulunamadı.' };
+
+  return new Promise((resolve) => {
+    const printOptions = {
+      silent: true, // PENCERE VE YAZICI SEÇİM DİYALOĞU AÇILMADAN DİREKT YAZDIR
+      printBackground: true,
+      deviceName: options.deviceName || '', // Boş ise sistem varsayılanını (POS-80C) kullanır
+      color: false,
+      margins: { marginType: 'none' },
+      copies: options.copies || 1,
+    };
+
+    mainWindow.webContents.print(printOptions, (success, failureReason) => {
+      if (!success) {
+        console.warn('⚠️ Doğrudan yazdırma uyarısı:', failureReason);
+      } else {
+        console.log('✅ Fiş başarıyla doğrudan yazıcıya iletildi.');
+      }
+      resolve({ success, failureReason });
+    });
+  });
+});
+
+ipcMain.handle('get-printers', async () => {
+  if (!mainWindow) return [];
+  try {
+    const printers = await mainWindow.webContents.getPrintersAsync();
+    return printers.map((p) => ({
+      name: p.name,
+      displayName: p.displayName || p.name,
+      isDefault: p.isDefault,
+      status: p.status,
+    }));
+  } catch (e) {
+    console.error('Yazıcılar listelenirken hata:', e);
+    return [];
+  }
+});
+
+ipcMain.handle('toggle-fullscreen', () => {
+  if (mainWindow) {
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+  }
+});
 
 app.on('ready', () => {
   startServer();

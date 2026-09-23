@@ -16,15 +16,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   settings,
   onLoginSuccess,
 }) => {
-  const [selectedUser, setSelectedUser] = useState<AppUser | null>(
-    users.length > 0 ? users[0] : null
-  );
+  const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [pinCode, setPinCode] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [loginMode, setLoginMode] = useState<'quick' | 'username'>('quick');
   const [usernameInput, setUsernameInput] = useState<string>('');
 
   const handleNumpadPress = (num: string) => {
+    if (loginMode === 'quick' && !selectedUser) {
+      setErrorMessage('Lütfen önce giriş yapacak personeli seçin.');
+      return;
+    }
     if (pinCode.length < 6) {
       const newPin = pinCode + num;
       setPinCode(newPin);
@@ -293,8 +295,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <KeyRound className="w-3.5 h-3.5" /> PIN Kodu Girişi
             </span>
             <h3 className="text-sm font-bold text-stone-200">
-              {loginMode === 'quick' && selectedUser
-                ? `${selectedUser.name} için 4 Haneli PIN`
+              {loginMode === 'quick'
+                ? selectedUser
+                  ? `${selectedUser.name} için 4 Haneli PIN`
+                  : 'Lütfen Personel Profilinizi Seçin'
                 : 'PIN Kodunuzu Tuşlayın'}
             </h3>
           </div>

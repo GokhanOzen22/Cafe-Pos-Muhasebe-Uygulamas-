@@ -143,7 +143,7 @@ export const TableGrid: React.FC<TableGridProps> = ({
         {/* Second Row: Status Filter Pills & Search Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-stone-100 dark:border-stone-800">
           
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar max-w-full text-xs">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar max-w-full text-xs min-w-0">
             <button
               onClick={() => setStatusFilter('all')}
               className={`px-2.5 py-1.5 rounded-lg font-medium transition-all whitespace-nowrap shrink-0 ${
@@ -232,7 +232,7 @@ export const TableGrid: React.FC<TableGridProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 min-[480px]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-4">
+        <div className="grid grid-cols-2 min-[480px]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5 sm:gap-4">
           {filteredTables.map((table) => {
             const activeOrder = activeOrdersMap.get(table.id);
             const statusBadge = getStatusBadge(table.status);

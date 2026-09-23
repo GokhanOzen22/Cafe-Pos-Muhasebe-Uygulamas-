@@ -1,4 +1,4 @@
-import { Zone, Table, Category, MenuItem, StockItem, Order, RestaurantSettings, AppUser, SystemLog, ServerInfo, PurchaseInvoice, ExpenseInvoice, KitchenNotification } from '../types';
+import { Zone, Table, Category, MenuItem, StockItem, Order, RestaurantSettings, AppUser, SystemLog, ServerInfo, PurchaseInvoice, ExpenseInvoice, KitchenNotification, DailyZReport } from '../types';
 import { initialZones, initialTables, initialCategories, initialMenuItems, initialStockItems, initialOrders, defaultSettings, initialUsers, initialPurchaseInvoices, initialExpenseInvoices } from '../data/initialData';
 
 const STORAGE_KEYS = {
@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   PURCHASE_INVOICES: 'adisyon_purchase_invoices_v1',
   EXPENSE_INVOICES: 'adisyon_expense_invoices_v1',
   NOTIFICATIONS: 'adisyon_kitchen_notifications_v1',
+  DAILY_Z_REPORTS: 'adisyon_daily_zreports_v1',
 };
 
 export class StorageService {
@@ -43,6 +44,7 @@ export class StorageService {
     settings: RestaurantSettings;
     users: AppUser[];
     notifications?: KitchenNotification[];
+    dailyZReports?: DailyZReport[];
   } | null> {
     try {
       const res = await fetch('/api/all-data');
@@ -61,6 +63,7 @@ export class StorageService {
       if (data.settings) this.saveSettings(data.settings, false);
       if (data.users) this.saveUsers(data.users, false);
       if (data.notifications) this.saveKitchenNotifications(data.notifications, false);
+      if (data.dailyZReports) this.saveDailyZReports(data.dailyZReports, false);
 
       return data;
     } catch {
@@ -328,6 +331,18 @@ export class StorageService {
     }
   }
 
+  static getDailyZReports(): DailyZReport[] {
+    const data = localStorage.getItem(STORAGE_KEYS.DAILY_Z_REPORTS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  static saveDailyZReports(dailyZReports: DailyZReport[], sync: boolean = true): void {
+    localStorage.setItem(STORAGE_KEYS.DAILY_Z_REPORTS, JSON.stringify(dailyZReports));
+    if (sync) {
+      this.syncToServer({ dailyZReports });
+    }
+  }
+
   static async resetAllToDefaults(): Promise<void> {
     localStorage.setItem(STORAGE_KEYS.ZONES, JSON.stringify(initialZones));
     localStorage.setItem(STORAGE_KEYS.TABLES, JSON.stringify(initialTables));
@@ -339,6 +354,7 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(initialUsers));
     localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(initialPurchaseInvoices));
     localStorage.setItem(STORAGE_KEYS.EXPENSE_INVOICES, JSON.stringify(initialExpenseInvoices));
+    localStorage.setItem(STORAGE_KEYS.DAILY_Z_REPORTS, JSON.stringify([]));
 
     try {
       await fetch('/api/reset-data', { method: 'POST' });

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Category, MenuItem, StockItem, Order, Zone, Table, RestaurantSettings, AppUser, PurchaseInvoice, ExpenseInvoice
+  Category, MenuItem, StockItem, Order, Zone, Table, RestaurantSettings, AppUser, PurchaseInvoice, ExpenseInvoice, DailyZReport
 } from '../types';
 import {
   TrendingUp, BarChart3, Package, Utensils, Settings, History, Plus,
@@ -8,7 +9,9 @@ import {
   PieChart as PieChartIcon, Search, Check, RefreshCw, Users, Key,
   Percent, Coins, ArrowUpDown, Tag, X, LayoutGrid, Layers, Coffee,
   CupSoda, Egg, UtensilsCrossed, Hamburger, Cake, Upload, Image as ImageIcon, Building2, Link as LinkIcon,
-  FileText, PlusCircle, FilePlus, Zap, Receipt, Eye, CheckCircle2, Calendar, Clock, Filter, AlertCircle
+  FileText, PlusCircle, FilePlus, Zap, Receipt, Eye, CheckCircle2, Calendar, Clock, Filter, AlertCircle,
+  Lock, Archive, ChevronRight, CheckSquare, Sparkles, FolderArchive, ArrowRight, UserX,
+  MapPin, Phone, Landmark
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -34,6 +37,9 @@ interface AdminPanelProps {
   settings: RestaurantSettings;
   users: AppUser[];
   currentUser?: AppUser | null;
+  dailyZReports?: DailyZReport[];
+  onCloseDay?: (notes?: string) => DailyZReport;
+  onUpdateDailyZReports?: (reports: DailyZReport[]) => void;
   onUpdateCategories: (categories: Category[]) => void;
   onUpdateMenuItems: (items: MenuItem[]) => void;
   onUpdateStockItems: (items: StockItem[]) => void;
@@ -62,6 +68,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   settings,
   users,
   currentUser,
+  dailyZReports = [],
+  onCloseDay,
+  onUpdateDailyZReports,
   onUpdateCategories,
   onUpdateMenuItems,
   onUpdateStockItems,
@@ -86,6 +95,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canManageSettings = currentUser ? currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
   const canManageServer = currentUser ? currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
   const canAddTable = currentUser ? currentUser.permissions?.canAddTable || currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
+  const canCloseDay = currentUser ? (currentUser.role === 'admin' || currentUser.isSystemAdmin || currentUser.permissions?.canCloseDay !== false || currentUser.permissions?.canViewReports) : true;
 
   // Initial tab selection
   const defaultTab = canViewReports
@@ -156,13 +166,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [showDetailedReportModal, setShowDetailedReportModal] = useState<boolean>(false);
   const [showInvoiceReportModal, setShowInvoiceReportModal] = useState<boolean>(false);
 
+  // Dedicated class on body during Z-Report printing so background #root is completely hidden
+  useEffect(() => {
+    if (showZReportModal) {
+      document.body.classList.add('printing-zreport');
+    } else {
+      document.body.classList.remove('printing-zreport');
+    }
+    return () => {
+      document.body.classList.remove('printing-zreport');
+    };
+  }, [showZReportModal]);
+
+  const handlePrintZReport = async () => {
+    const targetPrinter =
+      settings.selectedPrinterName ||
+      settings.printers?.find((p) => p.isDefault)?.usbDeviceName ||
+      settings.printers?.find((p) => p.isDefault)?.name ||
+      '';
+
+    try {
+      if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.printDirect === 'function') {
+        const result = await window.electronAPI.printDirect({
+          silent: true,
+          deviceName: targetPrinter,
+          copies: 1,
+        });
+        if (result && result.success) {
+          return;
+        }
+      }
+      window.print();
+    } catch (err) {
+      console.warn('Z-Raporu yazdırma hatası:', err);
+      try {
+        window.print();
+      } catch (e) {
+        console.error('window.print hatası:', e);
+      }
+    }
+  };
+
   const handleOpenZReport = () => {
     setShowDetailedReportModal(false);
     setShowInvoiceReportModal(false);
     setShowZReportModal(true);
     setTimeout(() => {
-      window.print();
-    }, 300);
+      handlePrintZReport();
+    }, 350);
   };
 
   const handleOpenDetailedReport = () => {
@@ -183,8 +234,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }, 300);
   };
 
-  // Selected Date Filter State
+  // Selected Date Filter State & Z-Report Archive States
+  type ReportDateFilter = 'active' | 'today' | 'yesterday' | 'custom' | 'all';
+  const [reportDateFilter, setReportDateFilter] = useState<ReportDateFilter>('active');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [reportsSubView, setReportsSubView] = useState<'dashboard' | 'archive'>('dashboard');
+  const [selectedArchiveZReport, setSelectedArchiveZReport] = useState<DailyZReport | null>(null);
+  const [showCloseDayConfirmModal, setShowCloseDayConfirmModal] = useState<boolean>(false);
+  const [archiveSearchQuery, setArchiveSearchQuery] = useState<string>('');
 
   // New Menu Item State
   const [showAddMenuModal, setShowAddMenuModal] = useState<boolean>(false);
@@ -282,8 +339,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }, 3500);
   };
 
-  // Filter closed completed orders for reports
-  const closedOrders = orders.filter((o) => o.status === 'closed');
+  // Filter closed completed orders for reports based on date filter or archived Z-Report selection
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+  const closedOrders = React.useMemo(() => {
+    if (selectedArchiveZReport) {
+      if (selectedArchiveZReport.ordersSnapshot && selectedArchiveZReport.ordersSnapshot.length > 0) {
+        return selectedArchiveZReport.ordersSnapshot;
+      }
+      return orders.filter((o) => o.zReportId === selectedArchiveZReport.id);
+    }
+
+    if (reportDateFilter === 'active') {
+      // Unsealed orders (active open day/shift)
+      return orders.filter((o) => o.status === 'closed' && !o.zReportId);
+    }
+    if (reportDateFilter === 'today') {
+      return orders.filter((o) => o.status === 'closed' && (o.closedAt || o.createdAt).slice(0, 10) === todayStr);
+    }
+    if (reportDateFilter === 'yesterday') {
+      return orders.filter((o) => o.status === 'closed' && (o.closedAt || o.createdAt).slice(0, 10) === yesterdayStr);
+    }
+    if (reportDateFilter === 'custom') {
+      return orders.filter((o) => o.status === 'closed' && (o.closedAt || o.createdAt).slice(0, 10) === selectedDate);
+    }
+    // 'all'
+    return orders.filter((o) => o.status === 'closed');
+  }, [orders, selectedArchiveZReport, reportDateFilter, selectedDate, todayStr, yesterdayStr]);
+
+  // Unsealed Orders for Day Closure Metrics
+  const unsealedOrders = orders.filter((o) => o.status === 'closed' && !o.zReportId);
+  const unsealedRevenue = unsealedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  const unsealedNakit = unsealedOrders.filter((o) => o.paymentType === 'nakit').reduce((sum, o) => sum + o.totalAmount, 0);
+  const unsealedKredi = unsealedOrders.filter((o) => o.paymentType === 'kredi_karti').reduce((sum, o) => sum + o.totalAmount, 0);
+  const unsealedYemek = unsealedOrders.filter((o) => o.paymentType === 'yemek_karti').reduce((sum, o) => sum + o.totalAmount, 0);
+  const activeOpenTables = tables.filter((t) => t.status === 'occupied' || t.status === 'bill_requested');
+  const activeOpenOrders = orders.filter((o) => o.status === 'open');
+  const activeOpenAmount = activeOpenOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+  // Active Unpaid Debts (Müşteri Açık Borçları / Veresiye) - Devreden Borçlar
+  const activeUnpaidDebts = orders.filter((o) => o.status === 'unpaid_debt');
+  const activeUnpaidDebtCount = activeUnpaidDebts.length;
+  const activeUnpaidDebtAmount = activeUnpaidDebts.reduce((sum, o) => sum + o.totalAmount, 0);
 
   // Report Metrics Calculations
   const totalRevenue = closedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
@@ -419,9 +517,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   });
 
-  const topSellingItems = Array.from(itemSalesMap.values())
-    .sort((a, b) => b.qty - a.qty)
-    .slice(0, 5);
+  const allSoldItems = Array.from(itemSalesMap.values()).sort((a, b) => b.qty - a.qty);
+  const topSellingItems = allSoldItems.slice(0, 5);
 
   // Staff / Personel Performance Calculation
   const staffPerformanceMap = new Map<string, {
@@ -495,6 +592,121 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     { hour: '19:00', ciro: 4200 },
     { hour: '21:00', ciro: 2900 },
   ];
+
+  // Action Handlers for Day Closure & Historical Reports
+  const handleExecuteCloseDay = () => {
+    let createdReport: DailyZReport;
+    if (onCloseDay) {
+      createdReport = onCloseDay();
+    } else {
+      const nextZNum = (dailyZReports?.length || 0) + 1;
+      const zReportNo = `Z-${String(nextZNum).padStart(4, '0')}`;
+      const nowIso = new Date().toISOString();
+      const newReport: DailyZReport = {
+        id: `zrep-${Date.now()}-${nextZNum}`,
+        zNumber: nextZNum,
+        zReportNo,
+        date: nowIso.slice(0, 10),
+        openedAt: unsealedOrders[0]?.createdAt || nowIso,
+        closedAt: nowIso,
+        closedByUserId: currentUser?.id,
+        closedByUserName: currentUser?.name || 'Kasa Yetkilisi',
+        totalRevenue: unsealedRevenue,
+        ordersCount: unsealedOrders.length,
+        paymentBreakdown: {
+          nakit: unsealedNakit,
+          kredi_karti: unsealedKredi,
+          yemek_karti: unsealedYemek,
+        },
+        totalTax: unsealedOrders.reduce((s, o) => s + o.taxAmount, 0),
+        totalDiscounts: unsealedOrders.reduce((s, o) => s + o.discountAmount, 0),
+        totalCost: unsealedOrders.reduce((sum, o) => {
+          return (
+            sum +
+            o.items.reduce((itemSum, item) => {
+              const matchedMenuItem = menuItems.find((m) => m.id === item.menuItemId || m.name === item.name);
+              const unitCost = item.costPrice > 0 ? item.costPrice : (matchedMenuItem?.costPrice || 0);
+              return itemSum + unitCost * item.quantity;
+            }, 0)
+          );
+        }, 0),
+        estimatedProfit: Math.max(0, unsealedRevenue - totalCost),
+        devredenMasaSayisi: activeOpenTables.length,
+        devredenTutar: activeOpenAmount,
+        devredenBorcluSayisi: activeUnpaidDebtCount,
+        devredenBorcTutari: activeUnpaidDebtAmount,
+        devredenBorclular: activeUnpaidDebts.map((d) => ({
+          orderId: d.id,
+          customerName: d.customerNotes || 'İsimsiz Müşteri',
+          tableName: d.tableName,
+          amount: d.totalAmount,
+          createdAt: d.createdAt,
+        })),
+        itemsSold: allSoldItems,
+        ordersSnapshot: unsealedOrders,
+      };
+
+      const unsealedIds = new Set(unsealedOrders.map((o) => o.id));
+      const updatedOrders = orders.map((o) => {
+        if (unsealedIds.has(o.id)) {
+          return { ...o, zReportId: newReport.id };
+        }
+        if (o.status === 'unpaid_debt') {
+          return {
+            ...o,
+            isCarriedOverDebt: true,
+            debtOriginDate: o.debtOriginDate || o.createdAt?.slice(0, 10) || nowIso.slice(0, 10),
+          };
+        }
+        return o;
+      });
+      if (onUpdateOrders) onUpdateOrders(updatedOrders);
+      if (onUpdateDailyZReports && dailyZReports) {
+        onUpdateDailyZReports([newReport, ...dailyZReports]);
+      }
+      createdReport = newReport;
+    }
+
+    setShowCloseDayConfirmModal(false);
+    setSelectedArchiveZReport(createdReport);
+    setReportDateFilter('active');
+
+    // Automatically trigger thermal Z-Report print
+    setShowZReportModal(true);
+    setTimeout(() => {
+      handlePrintZReport();
+    }, 350);
+
+    showToast(`GÜN BAŞARIYLA KAPATILDI! ${createdReport.zReportNo} nolu Z-Raporu kaydedildi ve yeni güne geçildi.`);
+  };
+
+  const handlePrintArchiveThermal = (report: DailyZReport) => {
+    setSelectedArchiveZReport(report);
+    setShowZReportModal(true);
+    setTimeout(() => {
+      handlePrintZReport();
+    }, 350);
+  };
+
+  const handlePrintArchiveDetailed = (report: DailyZReport) => {
+    setSelectedArchiveZReport(report);
+    setShowDetailedReportModal(true);
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  };
+
+  const handleInspectArchiveReport = (report: DailyZReport) => {
+    setSelectedArchiveZReport(report);
+    setReportsSubView('dashboard');
+    showToast(`${report.zReportNo} nolu arşiv Z-Raporu yüklendi.`);
+  };
+
+  const handleReturnToActiveDay = () => {
+    setSelectedArchiveZReport(null);
+    setReportDateFilter('active');
+    showToast('Aktif açık güne dönüldü.');
+  };
 
   // Add New Menu Item Handler
   const handleCreateMenuItem = (e: React.FormEvent) => {
@@ -999,6 +1211,239 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   };
 
+  // Dedicated Thermal Z-Report Slip Content (Reused for screen preview and thermal portal)
+  const renderZReportSlip = (isPortal: boolean = false, reportOverride?: DailyZReport | null) => {
+    const targetReport = reportOverride !== undefined ? reportOverride : selectedArchiveZReport;
+
+    const slipRevenue = targetReport ? targetReport.totalRevenue : totalRevenue;
+    const slipOrdersCount = targetReport ? targetReport.ordersCount : closedOrders.length;
+    const slipNakit = targetReport ? targetReport.paymentBreakdown.nakit : paymentMethodStats.nakit;
+    const slipKredi = targetReport ? targetReport.paymentBreakdown.kredi_karti : paymentMethodStats.kredi_karti;
+    const slipYemek = targetReport ? targetReport.paymentBreakdown.yemek_karti : paymentMethodStats.yemek_karti;
+    const slipTax = targetReport ? targetReport.totalTax : totalTax;
+    const slipDiscounts = targetReport ? targetReport.totalDiscounts : totalDiscounts;
+    const slipProfit = targetReport ? targetReport.estimatedProfit : estimatedProfit;
+    const slipItems = targetReport ? (targetReport.itemsSold || []) : allSoldItems;
+    const slipDevredenCount = targetReport ? (targetReport.devredenMasaSayisi || 0) : activeOpenTables.length;
+    const slipDevredenTotal = targetReport ? (targetReport.devredenTutar || 0) : activeOpenAmount;
+
+    const slipDevredenBorcluSayisi = targetReport
+      ? (targetReport.devredenBorcluSayisi !== undefined ? targetReport.devredenBorcluSayisi : (targetReport.devredenBorclular?.length || 0))
+      : activeUnpaidDebtCount;
+    const slipDevredenBorcTutari = targetReport
+      ? (targetReport.devredenBorcTutari !== undefined ? targetReport.devredenBorcTutari : 0)
+      : activeUnpaidDebtAmount;
+    const slipDevredenBorclular = targetReport
+      ? (targetReport.devredenBorclular || [])
+      : activeUnpaidDebts.map((d) => ({
+          orderId: d.id,
+          customerName: d.customerNotes || 'İsimsiz Müşteri',
+          tableName: d.tableName,
+          amount: d.totalAmount,
+          createdAt: d.createdAt,
+        }));
+
+    const totalSoldUnits = slipItems.reduce((acc, i) => acc + i.qty, 0);
+    const isUltraCompact = slipItems.length > 25;
+    const isCompact = slipItems.length > 10;
+
+    const slipTitle = targetReport
+      ? `${targetReport.zReportNo} GÜN SONU RESMİ Z-RAPORU`
+      : reportDateFilter === 'active'
+      ? 'AKTİF GÜN SONU MÜHÜR & Z-RAPORU'
+      : reportDateFilter === 'today'
+      ? 'GÜN SONU Z-RAPORU (BUGÜN)'
+      : reportDateFilter === 'yesterday'
+      ? 'GÜN SONU Z-RAPORU (DÜN)'
+      : reportDateFilter === 'custom'
+      ? `GÜN SONU Z-RAPORU (${formatDate(selectedDate)})`
+      : 'GÜN SONU Z-RAPORU (TÜMÜ)';
+
+    const slipDateStr = targetReport
+      ? `${formatDate(targetReport.closedAt)} - ${formatTime(targetReport.closedAt)}`
+      : `${formatDate(new Date().toISOString())} - ${formatTime(new Date().toISOString())}`;
+
+    const cashierName = targetReport ? targetReport.closedByUserName : (currentUser?.name || 'Kasa Yetkilisi');
+
+    return (
+      <div
+        id={isPortal ? 'thermal-zreport-print-slip' : undefined}
+        className={`${
+          isPortal
+            ? 'thermal-portal-slip'
+            : 'bg-white text-black p-4 sm:p-5 rounded-xl font-mono text-xs space-y-3 shadow-inner max-h-[60vh] overflow-y-auto border border-stone-300'
+        }`}
+        style={{
+          fontFamily: 'Arial, "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+          color: '#000000',
+          backgroundColor: '#ffffff',
+        }}
+      >
+        {/* Header / Logo */}
+        <div className="text-center border-b border-black/20 pb-2.5 space-y-1 thermal-unbreakable-block">
+          <div className="flex justify-center mb-1">
+            <img
+              src={settings.logoUrl || '/logo.svg'}
+              onError={(e) => { e.currentTarget.src = '/logo.svg'; }}
+              alt={settings.name || 'Logo'}
+              className="max-h-16 max-w-[190px] object-contain mx-auto print:max-h-20"
+              style={{
+                filter: 'grayscale(100%) contrast(350%) brightness(80%)',
+                WebkitFilter: 'grayscale(100%) contrast(350%) brightness(80%)',
+                imageRendering: 'crisp-edges',
+              }}
+            />
+          </div>
+          <h2 className="font-black text-sm uppercase tracking-tight" style={{ fontWeight: 900 }}>
+            {settings.name || 'MERİÇ BELEDİYESİ SOSYAL TESİSLERİ'}
+          </h2>
+          {settings.address && (
+            <p className="text-[10px] font-bold text-stone-900 leading-tight">
+              {settings.address}
+            </p>
+          )}
+          {(settings.phone || settings.taxNumber) && (
+            <p className="text-[9.5px] font-bold text-stone-900">
+              {settings.phone ? `Tel: ${settings.phone}` : ''}
+              {settings.phone && settings.taxNumber ? ' • ' : ''}
+              {settings.taxNumber ? `${settings.taxOffice ? `${settings.taxOffice} ` : ''}VKN: ${settings.taxNumber}` : ''}
+            </p>
+          )}
+          <div className="bg-black text-white font-black text-xs py-0.5 px-2 rounded inline-block uppercase tracking-wider my-0.5">
+            {slipTitle}
+          </div>
+          <p className="text-[10px] font-bold text-stone-800">
+            Rapor Tarihi: {slipDateStr}
+          </p>
+          {targetReport && (
+            <p className="text-[9.5px] font-black text-stone-900 uppercase">
+              MÜHÜR NO: {targetReport.zReportNo} • KAPATAN: {cashierName}
+            </p>
+          )}
+        </div>
+
+        {/* Financial Summary */}
+        <div className="border-b border-black/20 pb-2 space-y-1 text-xs thermal-unbreakable-block">
+          <div className="flex justify-between font-black text-sm border-b-2 border-black pb-1">
+            <span>TOPLAM CİRO:</span>
+            <span>{formatCurrency(slipRevenue, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Kapanan Adisyon:</span>
+            <span className="font-black">{slipOrdersCount} Adet</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Nakit Tahsilat:</span>
+            <span className="font-black">{formatCurrency(slipNakit, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Kredi Kartı:</span>
+            <span className="font-black">{formatCurrency(slipKredi, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Yemek Çeki / Kartı:</span>
+            <span className="font-black">{formatCurrency(slipYemek, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800 pt-1 border-t border-dashed border-black/30">
+            <span>Hesaplanan KDV (%{settings.taxRatePercent || 10}):</span>
+            <span className="font-black">{formatCurrency(slipTax, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Toplam İskonto:</span>
+            <span className="font-black">{formatCurrency(slipDiscounts, settings.currencySymbol)}</span>
+          </div>
+          <div className="flex justify-between font-black text-emerald-950 pt-1 border-t border-black/20">
+            <span>Tahmini Net Kâr:</span>
+            <span className="font-black">{formatCurrency(slipProfit, settings.currencySymbol)}</span>
+          </div>
+        </div>
+
+        {/* Open Orders Rollover */}
+        <div className="border-b border-black/20 pb-2 space-y-1 text-xs thermal-unbreakable-block">
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Devreden Açık Masalar ({slipDevredenCount}):</span>
+            <span className="font-black">
+              {formatCurrency(slipDevredenTotal, settings.currencySymbol)}
+            </span>
+          </div>
+        </div>
+
+        {/* Unpaid Debts Rollover - Devreden Müşteri Borçları / Veresiye */}
+        <div className="border-b border-black/20 pb-2 space-y-1 text-xs thermal-unbreakable-block">
+          <div className="flex justify-between font-bold text-stone-800">
+            <span>Devreden Müşteri Borçları ({slipDevredenBorcluSayisi} Kişi):</span>
+            <span className="font-black text-rose-700">
+              {formatCurrency(slipDevredenBorcTutari, settings.currencySymbol)}
+            </span>
+          </div>
+          {slipDevredenBorclular && slipDevredenBorclular.length > 0 && (
+            <div className="pt-1 space-y-0.5 text-[9.5px]">
+              <div className="font-black text-[9px] uppercase tracking-wider text-stone-600">
+                Tahsil Edilene Kadar Devreden Borçlular:
+              </div>
+              {slipDevredenBorclular.map((b, bIdx) => (
+                <div key={bIdx} className="flex justify-between text-stone-700">
+                  <span className="truncate pr-1">• {b.customerName} ({b.tableName})</span>
+                  <span className="font-bold shrink-0">{formatCurrency(b.amount, settings.currencySymbol)}</span>
+                </div>
+              ))}
+              <div className="text-[8.5px] italic text-stone-500 pt-0.5">
+                * Bu borçlar tahsil edilene kadar diğer günlere borçlu olarak devreder.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Product Breakdown - Continuous Stream for Any Number of Items */}
+        {slipItems.length > 0 ? (
+          <div className="space-y-1 pt-1">
+            <div className="flex justify-between items-center border-b-2 border-black pb-0.5 text-xs font-black uppercase thermal-unbreakable-block">
+              <span>Satılan Ürünler ({slipItems.length} Kalem)</span>
+              <span>{totalSoldUnits} Adet</span>
+            </div>
+            <div className="space-y-0.5">
+              {slipItems.map((item, idx) => (
+                <div
+                  key={idx}
+                  className={`flex justify-between items-baseline thermal-item-row border-b border-dotted border-black/30 ${
+                    isUltraCompact ? 'py-0.5 text-[9.5px]' : isCompact ? 'py-0.5 text-[10.5px]' : 'py-1 text-xs'
+                  }`}
+                  style={{
+                    pageBreakInside: 'avoid',
+                    breakInside: 'avoid',
+                  }}
+                >
+                  <span className="truncate pr-1 font-bold">
+                    <span className="font-black">{item.qty}x</span> {item.name}
+                  </span>
+                  <span className="font-black shrink-0">
+                    {formatCurrency(item.revenue, settings.currencySymbol)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-2 font-bold text-xs thermal-unbreakable-block">
+            Bu dönemde henüz kapanan ürün satışı bulunmuyor.
+          </div>
+        )}
+
+        {/* Official Closing Footer */}
+        <div className="text-[10px] text-center pt-2.5 border-t-2 border-black font-black uppercase tracking-wider space-y-1.5 thermal-unbreakable-block">
+          <div>*** Z-RAPORU RESMİ GÜN SONU MÜHÜR KAYDI ***</div>
+          <div className="pt-2 flex justify-between text-[9px] font-bold text-stone-700">
+            <span>Kasa Yetkilisi: {cashierName}</span>
+            <span>Tesis Müdürü: ____________</span>
+          </div>
+          <p className="text-[8.5px] font-normal text-stone-500 pt-1 tracking-tight">
+            DG Digital Güvenlik Yazılım — Otomasyon Sistemleri
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       
@@ -1157,14 +1602,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   GÜNLÜK SATIŞ, FİNANSAL CİRO & Z-RAPORU ANALİZ MERKEZİ
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-stone-500 dark:text-stone-400">
-                  <span>📍 {settings.address}</span>
+                  {settings.address && <span>📍 {settings.address}</span>}
                   {settings.phone && <span>• 📞 {settings.phone}</span>}
-                  {settings.taxNumber && <span>• 🏢 VKN: {settings.taxNumber}</span>}
+                  {settings.taxNumber && (
+                    <span>• 🏢 {settings.taxOffice ? `${settings.taxOffice} • ` : ''}VKN: {settings.taxNumber}</span>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-center">
+              {canCloseDay && (
+                <button
+                  type="button"
+                  onClick={() => setShowCloseDayConfirmModal(true)}
+                  className="flex-1 sm:flex-initial py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs rounded-2xl flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95"
+                  title="Günü Kapat ve Resmi Z-Raporunu Mühürle"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Günü Kapat</span>
+                  {unsealedOrders.length > 0 && (
+                    <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                      {unsealedOrders.length}
+                    </span>
+                  )}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleOpenZReport}
@@ -1184,19 +1647,175 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* Top KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-            
-            <div className="p-4 bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-2">
-              <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
-                <span>BUGÜNKÜ TOPLAM CİRO</span>
-                <DollarSign className="w-4 h-4 text-amber-500" />
-              </div>
-              <p className="text-2xl font-black text-stone-900 dark:text-amber-400">
-                {formatCurrency(totalRevenue, settings.currencySymbol)}
-              </p>
-              <p className="text-[11px] text-stone-400">{closedOrders.length} Kapanan Adisyon</p>
+          {/* Sub-view Navigation Bar: Live Reports vs Historical Z-Reports Archive */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-stone-100 dark:bg-stone-850 p-2 rounded-2xl border border-stone-200 dark:border-stone-800">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setReportsSubView('dashboard')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  reportsSubView === 'dashboard'
+                    ? 'bg-amber-500 text-stone-950 shadow-sm'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-white dark:hover:bg-stone-800'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                <span>Günlük Rapor & Analizler</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReportsSubView('archive')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  reportsSubView === 'archive'
+                    ? 'bg-amber-500 text-stone-950 shadow-sm'
+                    : 'text-stone-600 dark:text-stone-300 hover:bg-white dark:hover:bg-stone-800'
+                }`}
+              >
+                <Archive className="w-4 h-4" />
+                <span>Geçmiş Z-Raporları Arşivi</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                  reportsSubView === 'archive' ? 'bg-stone-950 text-amber-400' : 'bg-stone-300 dark:bg-stone-700 text-stone-800 dark:text-stone-200'
+                }`}>
+                  {dailyZReports.length}
+                </span>
+              </button>
             </div>
+
+            {/* If inspecting an archived report, show indicator with Return button */}
+            {selectedArchiveZReport && (
+              <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 px-3 py-1.5 rounded-xl text-xs text-purple-700 dark:text-purple-300">
+                <Archive className="w-3.5 h-3.5 shrink-0 text-purple-500" />
+                <span className="font-bold">
+                  Arşiv: {selectedArchiveZReport.zReportNo} ({formatDate(selectedArchiveZReport.closedAt)})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleReturnToActiveDay}
+                  className="ml-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  Aktif Güne Dön
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* SUB-VIEW 1: DASHBOARD REPORTING */}
+          {reportsSubView === 'dashboard' && (
+            <div className="space-y-6">
+
+              {/* Dashboard Period Filter Bar */}
+              <div className="bg-white dark:bg-stone-900 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-800 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-stone-500 dark:text-stone-400 uppercase tracking-wider mr-1">
+                    Dönem:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedArchiveZReport(null); setReportDateFilter('active'); }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      !selectedArchiveZReport && reportDateFilter === 'active'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Aktif Açık Dönem</span>
+                    <span className="bg-stone-950/10 dark:bg-white/10 px-1.5 py-0.2 rounded text-[10px]">
+                      {unsealedOrders.length} Adisyon
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedArchiveZReport(null); setReportDateFilter('today'); }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      !selectedArchiveZReport && reportDateFilter === 'today'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    }`}
+                  >
+                    <span>Bugün ({todayStr.slice(5)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedArchiveZReport(null); setReportDateFilter('yesterday'); }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      !selectedArchiveZReport && reportDateFilter === 'yesterday'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    }`}
+                  >
+                    <span>Dün ({yesterdayStr.slice(5)})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedArchiveZReport(null); setReportDateFilter('all'); }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      !selectedArchiveZReport && reportDateFilter === 'all'
+                        ? 'bg-amber-500 text-stone-950 shadow-xs'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    }`}
+                  >
+                    <span>Tüm Zamanlar</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 pl-2 border-l border-stone-200 dark:border-stone-700">
+                    <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => {
+                        setSelectedArchiveZReport(null);
+                        setSelectedDate(e.target.value);
+                        setReportDateFilter('custom');
+                      }}
+                      className="bg-stone-100 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                {canCloseDay && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCloseDayConfirmModal(true)}
+                    className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md hover:shadow-lg active:scale-95"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Günü Kapat & Mühürle</span>
+                    <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-black">
+                      {unsealedOrders.length}
+                    </span>
+                  </button>
+                )}
+              </div>
+
+              {/* Top KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                
+                <div className="p-4 bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-2">
+                  <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
+                    <span className="font-bold">
+                      {selectedArchiveZReport
+                        ? `${selectedArchiveZReport.zReportNo} CİROSU`
+                        : reportDateFilter === 'active'
+                        ? 'AKTİF GÜN CİROSU'
+                        : reportDateFilter === 'today'
+                        ? 'BUGÜNKÜ CİRO'
+                        : reportDateFilter === 'yesterday'
+                        ? 'DÜNKÜ CİRO'
+                        : reportDateFilter === 'custom'
+                        ? `${formatDate(selectedDate)} CİROSU`
+                        : 'TOPLAM CİRO'}
+                    </span>
+                    <DollarSign className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <p className="text-2xl font-black text-stone-900 dark:text-amber-400">
+                    {formatCurrency(totalRevenue, settings.currencySymbol)}
+                  </p>
+                  <p className="text-[11px] text-stone-400">{closedOrders.length} Kapanan Adisyon</p>
+                </div>
 
             <div className="p-4 bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-2">
               <div className="flex items-center justify-between text-xs text-stone-500 dark:text-stone-400">
@@ -1252,6 +1871,71 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
             </div>
 
+          </div>
+
+          {/* Active Rollovers Summary Banner (Devreden Açık Masalar ve Devreden Müşteri Borçları) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Devreden Müşteri Borçları Kartı */}
+            <div className="p-4 bg-rose-50 dark:bg-rose-950/30 rounded-3xl border border-rose-200 dark:border-rose-900/50 flex items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-2xl shrink-0">
+                  <UserX className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wide">
+                      Devreden Müşteri Borçları (Veresiye)
+                    </span>
+                    <span className="text-[10px] font-black bg-rose-600 text-white px-2 py-0.5 rounded-full">
+                      {activeUnpaidDebtCount} Borçlu
+                    </span>
+                  </div>
+                  <p className="text-xl font-black text-rose-600 dark:text-rose-400">
+                    {formatCurrency(activeUnpaidDebtAmount, settings.currencySymbol)}
+                  </p>
+                  <p className="text-[11px] text-rose-700/85 dark:text-rose-300/85 mt-0.5">
+                    * Tahsil edilene kadar sonraki günlere borçlu olarak devreder.
+                  </p>
+                </div>
+              </div>
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('history');
+                    setHistoryStatusFilter('unpaid_debt');
+                  }}
+                  className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-extrabold shadow-sm transition-colors cursor-pointer"
+                >
+                  Borçluları İncele
+                </button>
+              </div>
+            </div>
+
+            {/* Devreden Açık Masalar Kartı */}
+            <div className="p-4 bg-sky-50 dark:bg-sky-950/30 rounded-3xl border border-sky-200 dark:border-sky-800/50 flex items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-2xl shrink-0">
+                  <UtensilsCrossed className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-sky-800 dark:text-sky-300 uppercase tracking-wide">
+                      Devreden Açık Masalar
+                    </span>
+                    <span className="text-[10px] font-black bg-sky-600 text-white px-2 py-0.5 rounded-full">
+                      {activeOpenTables.length} Masa
+                    </span>
+                  </div>
+                  <p className="text-xl font-black text-sky-700 dark:text-sky-300">
+                    {formatCurrency(activeOpenAmount, settings.currencySymbol)}
+                  </p>
+                  <p className="text-[11px] text-sky-700/85 dark:text-sky-300/85 mt-0.5">
+                    Masalar kapanana dek yeni günlere aktif olarak aktarılır.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Charts Row */}
@@ -1447,6 +2131,202 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         </div>
       )}
+
+      {/* SUB-VIEW 2: GEÇMİŞ Z-RAPORLARI ARŞİVİ */}
+      {reportsSubView === 'archive' && (
+        <div className="space-y-6">
+          {/* Archive Overview Cards & Search Bar */}
+          <div className="bg-white dark:bg-stone-900 p-5 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-b border-stone-200 dark:border-stone-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-purple-500/10 text-purple-600 dark:text-purple-400 rounded-2xl border border-purple-500/20">
+                  <Archive className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-stone-900 dark:text-stone-100">
+                    Geçmiş Gün Sonu & Z-Raporları Arşivi
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Kapatılmış tüm günlerin resmi mühürlü Z-raporları, tahsilat dökümleri ve satılan ürün listesi
+                  </p>
+                </div>
+              </div>
+
+              {canCloseDay && (
+                <button
+                  type="button"
+                  onClick={() => setShowCloseDayConfirmModal(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md hover:shadow-lg active:scale-95"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Aktif Günü Kapat & Z-Raporu Kes</span>
+                  {unsealedOrders.length > 0 && (
+                    <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                      {unsealedOrders.length} Adisyon
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Archive Stats and Search */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-stone-50 dark:bg-stone-850 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-750">
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">TOPLAM ARŞİV KAYDI</span>
+                <p className="text-xl font-black text-stone-900 dark:text-stone-100">{dailyZReports.length} Gün</p>
+              </div>
+              <div className="bg-stone-50 dark:bg-stone-850 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-750">
+                <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">ARŞİVLENMİŞ TOPLAM CİRO</span>
+                <p className="text-xl font-black text-amber-600 dark:text-amber-400">
+                  {formatCurrency(dailyZReports.reduce((s, r) => s + r.totalRevenue, 0), settings.currencySymbol)}
+                </p>
+              </div>
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 absolute left-3 text-stone-400" />
+                <input
+                  type="text"
+                  placeholder="Z-No, Tarih veya Kapatan Yetkili Ara..."
+                  value={archiveSearchQuery}
+                  onChange={(e) => setArchiveSearchQuery(e.target.value)}
+                  className="w-full bg-stone-50 dark:bg-stone-850 border border-stone-200 dark:border-stone-750 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-stone-900 dark:text-stone-100 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Archive Table */}
+          <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs overflow-hidden">
+            {dailyZReports.length === 0 ? (
+              <div className="text-center py-16 px-4 space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border border-amber-500/20">
+                  <Archive className="w-8 h-8" />
+                </div>
+                <div className="max-w-md mx-auto space-y-1">
+                  <h4 className="font-extrabold text-base text-stone-900 dark:text-stone-100">
+                    Henüz Arşivlenmiş Z-Raporu Bulunmuyor
+                  </h4>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Mevcut aktif açık satışlarınız tamamlandığında yukarıdaki <strong>"Günü Kapat"</strong> butonuna basarak gün sonunu mühürleyebilir ve ilk resmi Z-raporunuzu oluşturabilirsiniz.
+                  </p>
+                </div>
+                {canCloseDay && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCloseDayConfirmModal(true)}
+                    className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl inline-flex items-center gap-2 cursor-pointer shadow-md transition-all"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>Aktif Günü Kapat</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-extrabold uppercase border-b border-stone-200 dark:border-stone-700">
+                    <tr>
+                      <th className="p-3.5">Z-Rapor No</th>
+                      <th className="p-3.5">Kapanış Tarihi & Saat</th>
+                      <th className="p-3.5 text-center">Adisyon Adedi</th>
+                      <th className="p-3.5 text-right">Toplam Ciro</th>
+                      <th className="p-3.5">Tahsilat Dağılımı (N/KK/Y)</th>
+                      <th className="p-3.5 text-right">Tahmini Net Kâr</th>
+                      <th className="p-3.5">Kapatan Yetkili</th>
+                      <th className="p-3.5 text-right">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
+                    {dailyZReports
+                      .filter((rep) => {
+                        if (!archiveSearchQuery.trim()) return true;
+                        const q = archiveSearchQuery.toLowerCase();
+                        return (
+                          rep.zReportNo.toLowerCase().includes(q) ||
+                          rep.date.includes(q) ||
+                          (rep.closedByUserName && rep.closedByUserName.toLowerCase().includes(q))
+                        );
+                      })
+                      .map((rep) => (
+                        <tr key={rep.id} className="hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors">
+                          <td className="p-3.5 font-mono font-black text-purple-600 dark:text-purple-400">
+                            <span className="bg-purple-500/10 px-2 py-1 rounded-md border border-purple-500/20">
+                              {rep.zReportNo}
+                            </span>
+                          </td>
+                          <td className="p-3.5 font-bold text-stone-900 dark:text-stone-100">
+                            <div>{formatDate(rep.closedAt)}</div>
+                            <div className="text-[10px] text-stone-400 font-medium">{formatTime(rep.closedAt)}</div>
+                          </td>
+                          <td className="p-3.5 text-center font-black text-stone-800 dark:text-stone-200">
+                            {rep.ordersCount} Adet
+                          </td>
+                          <td className="p-3.5 text-right font-black text-amber-600 dark:text-amber-400 text-sm">
+                            {formatCurrency(rep.totalRevenue, settings.currencySymbol)}
+                          </td>
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-1.5 text-[10px]">
+                              <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-bold" title="Nakit">
+                                N: {formatCurrency(rep.paymentBreakdown.nakit, settings.currencySymbol)}
+                              </span>
+                              <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold" title="Kredi Kartı">
+                                KK: {formatCurrency(rep.paymentBreakdown.kredi_karti, settings.currencySymbol)}
+                              </span>
+                              {rep.paymentBreakdown.yemek_karti > 0 && (
+                                <span className="bg-sky-500/10 text-sky-600 dark:text-sky-400 px-1.5 py-0.5 rounded font-bold" title="Yemek Kartı">
+                                  Y: {formatCurrency(rep.paymentBreakdown.yemek_karti, settings.currencySymbol)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3.5 text-right font-black text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(rep.estimatedProfit, settings.currencySymbol)}
+                          </td>
+                          <td className="p-3.5 font-medium text-stone-700 dark:text-stone-300">
+                            {rep.closedByUserName || 'Kasa Görevlisi'}
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleInspectArchiveReport(rep)}
+                                className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[11px] rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Bu raporu detaylı incele ve grafikleri görüntüle"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-amber-500" />
+                                <span>İncele</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePrintArchiveThermal(rep)}
+                                className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                                title="Tek Sayfa Termal Fiş Yazdır"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>Termal</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePrintArchiveDetailed(rep)}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-xs"
+                                title="A4 Detaylı Rapor Çıktısı Al"
+                              >
+                                <BarChart3 className="w-3.5 h-3.5" />
+                                <span>A4</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+    </div>
+  )}
 
       {/* TAB: INVOICES & EXPENSES MANAGEMENT */}
       {activeTab === 'invoices' && (
@@ -2478,176 +3358,338 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
           {/* Sub Content 2: General Settings */}
           {settingsSubTab === 'general' && (
-            <div className="bg-white dark:bg-stone-900 p-6 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs max-w-2xl space-y-5">
-              <div className="border-b border-stone-200 dark:border-stone-800 pb-3">
-                <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-amber-500" />
-                  <span>Genel İşletme, Logo & Fiş Ayarları</span>
-                </h3>
-                <p className="text-xs text-stone-500 mt-1">
-                  İşletme adı ve logosu; ana giriş ekranında, üst navigasyon menüsünde ve adisyon fişlerinde doğrudan görünür.
-                </p>
-              </div>
-
-              <div className="space-y-4 text-sm">
-                {/* Business Name Field */}
-                <div>
-                  <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center justify-between gap-1.5">
-                    <span className="flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-amber-500" />
-                      <span>İşletme / Restoran Adı (Uygulama & Menü Başlığı):</span>
-                    </span>
-                    <span className="text-[10px] font-normal text-stone-400">
-                      {editSettingsForm.name.length}/100 Karakter
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={100}
-                    placeholder="Örn: Meriç Belediyesi Sosyal Tesisleri"
-                    value={editSettingsForm.name}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, name: e.target.value })}
-                    className="w-full mt-1.5 p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
-                  />
-                  <p className="text-[11px] text-stone-500 mt-1">
-                    Bu isim giriş ekranında, sol/üst logoda ve fiş başlığında yer alır (Maksimum 100 karakter izin verilmektedir).
-                  </p>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start max-w-6xl">
+              
+              {/* Form Card */}
+              <div className="lg:col-span-7 bg-white dark:bg-stone-900 p-5 sm:p-6 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-5">
+                <div className="border-b border-stone-200 dark:border-stone-800 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-black text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-amber-500" />
+                      <span>Genel İşletme, Vergi & Fiş Ayarları</span>
+                    </h3>
+                    <p className="text-xs text-stone-500 mt-1">
+                      İşletme adı, VKN, adres ve iletişim bilgileri; adisyon fişlerinde, Z-raporlarında ve üst menüde doğrudan görünür.
+                    </p>
+                  </div>
                 </div>
 
-                {/* Logo Management Field */}
-                <div className="bg-stone-50 dark:bg-stone-800/60 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-3">
-                  <label className="text-xs font-bold text-stone-800 dark:text-stone-200 flex items-center gap-1.5">
-                    <ImageIcon className="w-4 h-4 text-amber-500" />
-                    <span>İşletme Logosu (Ana Giriş, Üst Menü & Adisyon Fişi):</span>
-                  </label>
+                <div className="space-y-4 text-sm">
+                  {/* Business Name Field */}
+                  <div>
+                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center justify-between gap-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-amber-500" />
+                        <span>İşletme / Restoran Adı (Uygulama & Menü Başlığı):</span>
+                      </span>
+                      <span className="text-[10px] font-normal text-stone-400">
+                        {editSettingsForm.name.length}/100 Karakter
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={100}
+                      placeholder="Örn: Meriç Belediyesi Sosyal Tesisleri"
+                      value={editSettingsForm.name}
+                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, name: e.target.value })}
+                      className="w-full mt-1.5 p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-bold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                    />
+                    <p className="text-[11px] text-stone-500 mt-1">
+                      Bu isim giriş ekranında, sol/üst logoda ve fiş başlığında yer alır.
+                    </p>
+                  </div>
 
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    {/* Logo Preview Box */}
-                    <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 flex items-center justify-center overflow-hidden shrink-0 shadow-inner relative group">
-                      {editSettingsForm.logoUrl ? (
-                        <img
-                          src={editSettingsForm.logoUrl}
-                          alt="İşletme Logosu"
-                          className="w-full h-full object-contain p-2"
-                        />
-                      ) : (
-                        <div className="text-center p-2">
-                          <Utensils className="w-8 h-8 text-stone-400 mx-auto mb-1" />
-                          <span className="text-[10px] text-stone-400 font-medium block">Logo Yok</span>
-                        </div>
-                      )}
-                    </div>
+                  {/* Logo Management Field */}
+                  <div className="bg-stone-50 dark:bg-stone-800/60 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-3">
+                    <label className="text-xs font-bold text-stone-800 dark:text-stone-200 flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-amber-500" />
+                      <span>İşletme Logosu (Ana Giriş, Üst Menü & Adisyon Fişi):</span>
+                    </label>
 
-                    {/* Logo Upload & URL Options */}
-                    <div className="flex-1 space-y-2.5 w-full">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <label className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-xs transition-colors">
-                          <Upload className="w-4 h-4" />
-                          <span>Cihazdan Görsel / Logo Seç</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleLogoFileUpload}
-                            className="hidden"
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      {/* Logo Preview Box */}
+                      <div className="w-20 h-20 rounded-2xl border-2 border-dashed border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-900 flex items-center justify-center overflow-hidden shrink-0 shadow-inner relative group">
+                        {editSettingsForm.logoUrl ? (
+                          <img
+                            src={editSettingsForm.logoUrl}
+                            alt="İşletme Logosu"
+                            className="w-full h-full object-contain p-2"
                           />
-                        </label>
-
-                        {editSettingsForm.logoUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setEditSettingsForm((prev) => ({ ...prev, logoUrl: '' }))}
-                            className="px-3 py-2 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Logoyu Kaldır</span>
-                          </button>
+                        ) : (
+                          <div className="text-center p-2">
+                            <Utensils className="w-7 h-7 text-stone-400 mx-auto mb-1" />
+                            <span className="text-[10px] text-stone-400 font-medium block">Logo Yok</span>
+                          </div>
                         )}
                       </div>
 
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-stone-400">
-                          <LinkIcon className="w-3.5 h-3.5" />
+                      {/* Logo Upload & URL Options */}
+                      <div className="flex-1 space-y-2 w-full">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors">
+                            <Upload className="w-3.5 h-3.5" />
+                            <span>Cihazdan Görsel / Logo Seç</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+
+                          {editSettingsForm.logoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => setEditSettingsForm((prev) => ({ ...prev, logoUrl: '' }))}
+                              className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 dark:bg-rose-950/60 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                              <span>Logoyu Kaldır</span>
+                            </button>
+                          )}
                         </div>
-                        <input
-                          type="text"
-                          placeholder="Veya İnternet Görsel URL Adresi (https://...)"
-                          value={editSettingsForm.logoUrl || ''}
-                          onChange={(e) => setEditSettingsForm({ ...editSettingsForm, logoUrl: e.target.value })}
-                          className="w-full pl-8 pr-3 py-2 text-xs bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl"
-                        />
+
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-stone-400">
+                            <LinkIcon className="w-3.5 h-3.5" />
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Veya İnternet Görsel URL Adresi (https://...)"
+                            value={editSettingsForm.logoUrl || ''}
+                            onChange={(e) => setEditSettingsForm({ ...editSettingsForm, logoUrl: e.target.value })}
+                            className="w-full pl-8 pr-3 py-2 text-xs bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-700 rounded-xl"
+                          />
+                        </div>
                       </div>
-                      <p className="text-[10px] text-stone-500">
-                        * PNG, JPG, SVG veya WebP formatında görsel yükleyebilirsiniz.
-                      </p>
                     </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-stone-500">Adres:</label>
-                  <input
-                    type="text"
-                    value={editSettingsForm.address}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, address: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+                  {/* Address Field */}
                   <div>
-                    <label className="text-xs font-semibold text-stone-500">Telefon:</label>
+                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                      <span>İşletme Adresi (Fişte ve Z-Raporunda Görünür):</span>
+                    </label>
                     <input
                       type="text"
-                      value={editSettingsForm.phone}
-                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, phone: e.target.value })}
-                      className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl"
+                      placeholder="Örn: Meriç Sosyal Tesisleri, Edirne"
+                      value={editSettingsForm.address || ''}
+                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, address: e.target.value })}
+                      className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                     />
                   </div>
 
+                  {/* Phone & Tax Number (VKN) Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Telefon Numarası:</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Örn: 0 (284) 513 10 10"
+                        value={editSettingsForm.phone || ''}
+                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, phone: e.target.value })}
+                        className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Vergi Kimlik No (VKN / TCKN):</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Örn: 6180054321"
+                        value={editSettingsForm.taxNumber || ''}
+                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxNumber: e.target.value })}
+                        className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-black text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden font-mono tracking-wider"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Tax Office & VAT Rate Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <Landmark className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Vergi Dairesi (Opsiyonel):</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Örn: Meriç Vergi Dairesi"
+                        value={editSettingsForm.taxOffice || ''}
+                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxOffice: e.target.value })}
+                        className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <Percent className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Varsayılan KDV Oranı (%):</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={editSettingsForm.taxRatePercent}
+                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxRatePercent: parseFloat(e.target.value) || 10 })}
+                        className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Receipt Header Note */}
                   <div>
-                    <label className="text-xs font-semibold text-stone-500">KDV Oranı (%):</label>
+                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Fiş Üst Notu (Karşılama Metni):</span>
+                    </label>
                     <input
-                      type="number"
-                      value={editSettingsForm.taxRatePercent}
-                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxRatePercent: parseFloat(e.target.value) || 10 })}
-                      className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl"
+                      type="text"
+                      placeholder="Örn: Meriç Belediyesi Sosyal Tesislerine Hoş Geldiniz"
+                      value={editSettingsForm.receiptHeaderNote || ''}
+                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptHeaderNote: e.target.value })}
+                      className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-stone-500">Fiş Üst Notu:</label>
-                  <input
-                    type="text"
-                    value={editSettingsForm.receiptHeaderNote || ''}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptHeaderNote: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl"
-                  />
-                </div>
+                  {/* Receipt Footer Note */}
+                  <div>
+                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Fiş Altı Notu (Teşekkür & İletişim Metni):</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Örn: Afiyet olsun, yine bekleriz!"
+                      value={editSettingsForm.receiptFooterNote || ''}
+                      onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptFooterNote: e.target.value })}
+                      className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
+                    />
+                  </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-stone-500">Fiş Altı Notu:</label>
-                  <input
-                    type="text"
-                    value={editSettingsForm.receiptFooterNote}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptFooterNote: e.target.value })}
-                    className="w-full mt-1 p-2.5 bg-stone-50 dark:bg-stone-800 border rounded-xl"
-                  />
+                  {/* Save Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateSettings(editSettingsForm);
+                      showToast('✓ İşletme bilgileri (Vergi No, Adres, Telefon, Fiş Ayarları) başarıyla kaydedildi!');
+                    }}
+                    className="mt-4 px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl active:scale-[0.99] w-full transition-all cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>İşletme Bilgilerini, Vergi No & Logoyu Kaydet</span>
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    onUpdateSettings(editSettingsForm);
-                    alert('Ayarlar ve İşletme Logosu başarıyla kaydedildi!');
-                  }}
-                  className="mt-4 px-6 py-3 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-md w-full transition-all"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>İşletme Bilgilerini & Logoyu Kaydet</span>
-                </button>
               </div>
+
+              {/* Live Slip Preview Card */}
+              <div className="lg:col-span-5 bg-stone-100 dark:bg-stone-850 p-5 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-2xs space-y-3 sticky top-4">
+                <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-stone-700">
+                  <div className="flex items-center gap-2">
+                    <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span className="font-extrabold text-xs text-stone-900 dark:text-stone-100">
+                      Canlı Fiş / Adisyon Önizlemesi
+                    </span>
+                  </div>
+                  <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
+                    Otomatik Güncellenir
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                  Yandaki formda girdiğiniz Adres, Telefon ve VKN bilgileri termal yazıcı fişinde bu şekilde basılacaktır:
+                </p>
+
+                {/* Thermal Ticket Paper Simulation */}
+                <div className="bg-white text-black p-4 sm:p-5 rounded-2xl shadow-md border border-stone-300 font-sans text-xs space-y-2 select-none">
+                  {/* Logo in ticket */}
+                  <div className="flex justify-center mb-1">
+                    <img
+                      src={editSettingsForm.logoUrl || '/logo.svg'}
+                      onError={(e) => { e.currentTarget.src = '/logo.svg'; }}
+                      alt="Logo"
+                      className="max-h-14 max-w-[160px] object-contain mx-auto"
+                      style={{
+                        filter: 'grayscale(100%) contrast(350%) brightness(80%)',
+                        imageRendering: 'crisp-edges',
+                      }}
+                    />
+                  </div>
+
+                  {/* Header Titles */}
+                  <div className="text-center space-y-0.5">
+                    <h4 className="font-black text-sm uppercase tracking-tight text-black">
+                      {editSettingsForm.name || 'MERİÇ BELEDİYESİ SOSYAL TESİSLERİ'}
+                    </h4>
+                    {editSettingsForm.address && (
+                      <p className="text-xs font-bold leading-tight text-black">
+                        {editSettingsForm.address}
+                      </p>
+                    )}
+                    {editSettingsForm.phone && (
+                      <p className="text-xs font-bold text-black">
+                        Tel: {editSettingsForm.phone}
+                      </p>
+                    )}
+                    {editSettingsForm.taxNumber && (
+                      <p className="text-xs font-bold text-black">
+                        {editSettingsForm.taxOffice ? `${editSettingsForm.taxOffice} • ` : ''}VKN: {editSettingsForm.taxNumber}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="my-1.5 border-b-2 border-dashed border-black/80" />
+
+                  {/* Receipt Header Note */}
+                  {editSettingsForm.receiptHeaderNote && (
+                    <p className="text-center text-[11px] font-bold italic text-black">
+                      {editSettingsForm.receiptHeaderNote}
+                    </p>
+                  )}
+
+                  {/* Sample Order Data */}
+                  <div className="py-1 text-[11px] space-y-1 font-bold text-black">
+                    <div className="flex justify-between border-b border-black/20 pb-0.5 text-stone-600">
+                      <span>Masa: Masa 3 (Ana Salon)</span>
+                      <span>Garson: Ahmet Y.</span>
+                    </div>
+                    <div className="flex justify-between pt-0.5">
+                      <span>1x Türk Kahvesi</span>
+                      <span className="font-extrabold">50,00 ₺</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>2x Çay</span>
+                      <span className="font-extrabold">30,00 ₺</span>
+                    </div>
+                    <div className="flex justify-between border-t border-black/40 pt-1 font-black text-xs">
+                      <span>TOPLAM (KDV %{editSettingsForm.taxRatePercent}):</span>
+                      <span>80,00 ₺</span>
+                    </div>
+                  </div>
+
+                  {/* Dashed Separator */}
+                  <div className="my-1.5 border-b-2 border-dashed border-black/80" />
+
+                  {/* Receipt Footer Note */}
+                  {editSettingsForm.receiptFooterNote && (
+                    <p className="text-center text-[11px] font-bold text-black pt-0.5">
+                      {editSettingsForm.receiptFooterNote}
+                    </p>
+                  )}
+
+                  <div className="text-center text-[9px] font-mono text-stone-500 pt-1">
+                    * BİLGİ FİŞİDİR — MALİ DEĞERİ YOKTUR *
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -4055,125 +5097,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Z-Report Modal Overlay & Thermal Receipt */}
+      {/* Z-Report Modal Overlay & Thermal Receipt Portal */}
       {showZReportModal && (
-        <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-stone-900 border border-stone-800 rounded-2xl max-w-md w-full p-6 text-stone-100 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-stone-800 pb-4">
-              <div className="flex items-center gap-2">
-                <Printer className="w-5 h-5 text-amber-500" />
-                <h3 className="font-bold text-lg">Gün Sonu Z-Raporu</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowZReportModal(false)}
-                className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Printable Thermal Area */}
-            <div className="print-area bg-white text-black p-5 rounded-xl font-mono text-xs space-y-3 shadow-inner max-h-[60vh] overflow-y-auto border border-stone-300">
-              <div className="text-center border-b border-black/20 pb-3 space-y-1">
-                <div className="flex justify-center mb-2">
-                  <img
-                    src={settings.logoUrl || '/logo.svg'}
-                    onError={(e) => { e.currentTarget.src = '/logo.svg'; }}
-                    alt={settings.name || 'Logo'}
-                    className="max-h-20 max-w-[180px] object-contain mx-auto print:max-h-24 print:max-w-[200px]"
-                  />
+        <>
+          <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-stone-900 border border-stone-800 rounded-2xl max-w-md w-full p-6 text-stone-100 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-amber-500" />
+                  <h3 className="font-bold text-lg">Gün Sonu Z-Raporu</h3>
                 </div>
-                <h2 className="font-bold text-base uppercase tracking-tight">{settings.name || 'MERİÇ BELEDİYESİ SOSYAL TESİSLERİ'}</h2>
-                <p className="text-[11px] font-bold text-stone-800">GÜN SONU MÜHÜR VE Z-RAPORU</p>
-                <p className="text-[10px] text-stone-600">Rapor Tarihi: {formatDate(new Date().toISOString())}</p>
-                <p className="text-[10px] text-stone-600">Yazdırılma: {formatTime(new Date().toISOString())}</p>
+                <button
+                  type="button"
+                  onClick={() => setShowZReportModal(false)}
+                  className="p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {/* Financial Summary */}
-              <div className="border-b border-black/20 pb-3 space-y-1.5 text-xs">
-                <div className="flex justify-between font-bold text-sm border-b border-dashed border-black/30 pb-1">
-                  <span>TOPLAM CİRO:</span>
-                  <span>{formatCurrency(totalRevenue, settings.currencySymbol)}</span>
+              {/* Direct print single-slip indicator */}
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2.5 text-xs flex items-center justify-between font-bold text-emerald-300">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Tek Kesintisiz Sayfa Yazdırma (Bölünmez)</span>
                 </div>
-                <div className="flex justify-between text-stone-700">
-                  <span>Kapanan Adisyon:</span>
-                  <span className="font-bold">{closedOrders.length} Adet</span>
-                </div>
-                <div className="flex justify-between text-stone-700">
-                  <span>Nakit Tahsilat:</span>
-                  <span className="font-bold">{formatCurrency(paymentMethodStats.nakit, settings.currencySymbol)}</span>
-                </div>
-                <div className="flex justify-between text-stone-700">
-                  <span>Kredi Kartı:</span>
-                  <span className="font-bold">{formatCurrency(paymentMethodStats.kredi_karti, settings.currencySymbol)}</span>
-                </div>
-                <div className="flex justify-between text-stone-700">
-                  <span>Yemek Çeki / Kartı:</span>
-                  <span className="font-bold">{formatCurrency(paymentMethodStats.yemek_karti, settings.currencySymbol)}</span>
-                </div>
-                <div className="flex justify-between text-stone-600 pt-1 border-t border-dashed border-black/20">
-                  <span>Hesaplanan KDV (%{settings.taxRatePercent || 10}):</span>
-                  <span>{formatCurrency(totalTax, settings.currencySymbol)}</span>
-                </div>
-                <div className="flex justify-between text-stone-600">
-                  <span>Toplam İskonto:</span>
-                  <span>{formatCurrency(totalDiscounts, settings.currencySymbol)}</span>
-                </div>
-                <div className="flex justify-between text-emerald-800 font-bold pt-1 border-t border-black/10">
-                  <span>Tahmini Net Kar:</span>
-                  <span>{formatCurrency(estimatedProfit, settings.currencySymbol)}</span>
-                </div>
+                <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full uppercase">
+                  {settings.selectedPrinterName || 'POS-80C'}
+                </span>
               </div>
 
-              {/* Open Orders */}
-              <div className="border-b border-black/20 pb-2 space-y-1 text-xs">
-                <div className="flex justify-between text-stone-800 font-bold">
-                  <span>Devreden Açık Masalar ({orders.filter(o => o.status === 'active').length}):</span>
-                  <span>{formatCurrency(orders.filter(o => o.status === 'active').reduce((s, o) => s + o.totalAmount, 0), settings.currencySymbol)}</span>
-                </div>
+              {/* Modal On-Screen Scrollable Preview */}
+              {renderZReportSlip(false)}
+
+              {/* Modal Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handlePrintZReport}
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-all cursor-pointer shadow-lg"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Yazdır (Termal Fiş & Yazıcı)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowZReportModal(false)}
+                  className="bg-stone-800 hover:bg-stone-700 text-stone-300 font-semibold py-3 px-4 rounded-xl text-sm transition-all cursor-pointer"
+                >
+                  Kapat
+                </button>
               </div>
-
-              {/* Product Breakdown */}
-              {topSellingItems.length > 0 && (
-                <div className="space-y-1 pt-1">
-                  <p className="font-bold text-[11px] uppercase border-b border-black/20 pb-1">En Çok Satılan Ürünler Listesi</p>
-                  <div className="space-y-1 text-[11px]">
-                    {topSellingItems.map((item, idx) => (
-                      <div key={idx} className="flex justify-between">
-                        <span className="truncate pr-2">{item.qty}x {item.name}</span>
-                        <span className="font-bold shrink-0">{formatCurrency(item.revenue, settings.currencySymbol)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="text-[10px] text-center pt-3 border-t border-black/30 font-bold uppercase tracking-wider">
-                *** Z-RAPORU RESMİ KAYDI ***
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="flex-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-all cursor-pointer shadow-lg"
-              >
-                <Printer className="w-4 h-4" />
-                <span>Yazdır (Termal Fiş & Yazıcı)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowZReportModal(false)}
-                className="bg-stone-800 hover:bg-stone-700 text-stone-300 font-semibold py-3 px-4 rounded-xl text-sm transition-all cursor-pointer"
-              >
-                Kapat
-              </button>
             </div>
           </div>
-        </div>
+
+          {/* Dedicated Thermal Print Portal (Rendered directly in body for pure, single-slip thermal output) */}
+          {typeof document !== 'undefined' && createPortal(renderZReportSlip(true), document.body)}
+        </>
       )}
 
       {/* Detailed Report Modal Overlay for Standard A4 Paper */}
@@ -4215,13 +5195,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   />
                   <div>
                     <h1 className="text-xl font-black uppercase tracking-tight text-stone-950">{settings.name || 'MERİÇ BELEDİYESİ SOSYAL TESİSLERİ'}</h1>
-                    <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">GÜN SONU ÜRÜN BAZLI SATIŞ, MALİYET, NET KÂR VE PERSONEL PERFORMANS ANALİZ RAPORU</p>
+                    <p className="text-xs font-bold text-amber-600 uppercase tracking-wide">
+                      {selectedArchiveZReport
+                        ? `${selectedArchiveZReport.zReportNo} NOLU MÜHÜRLÜ GÜN SONU RESMİ ARŞİV RAPORU`
+                        : 'GÜN SONU ÜRÜN BAZLI SATIŞ, MALİYET, NET KÂR VE PERSONEL PERFORMANS ANALİZ RAPORU'}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right text-[11px] text-stone-600 space-y-0.5">
-                  <p><span className="font-bold">Rapor Tarihi:</span> {formatDate(selectedDate || new Date().toISOString())}</p>
-                  <p><span className="font-bold">Rapor Saati:</span> {formatTime(new Date().toISOString())}</p>
-                  <p><span className="font-bold">Rapor Alan:</span> {currentUser?.name || 'Kasa Yöneticisi'}</p>
+                  <p>
+                    <span className="font-bold">Rapor Tarihi:</span>{' '}
+                    {selectedArchiveZReport
+                      ? `${formatDate(selectedArchiveZReport.closedAt)} - ${formatTime(selectedArchiveZReport.closedAt)}`
+                      : `${formatDate(selectedDate || new Date().toISOString())} - ${formatTime(new Date().toISOString())}`}
+                  </p>
+                  <p>
+                    <span className="font-bold">Rapor Alan / Kapatan:</span>{' '}
+                    {selectedArchiveZReport ? selectedArchiveZReport.closedByUserName : (currentUser?.name || 'Kasa Yöneticisi')}
+                  </p>
                 </div>
               </div>
 
@@ -4801,6 +5792,117 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 className="bg-stone-800 hover:bg-stone-700 text-stone-300 font-semibold py-3.5 px-6 rounded-xl text-sm transition-all cursor-pointer"
               >
                 Kapat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLOSE DAY CONFIRMATION MODAL */}
+      {showCloseDayConfirmModal && (
+        <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-3xl max-w-lg w-full p-6 text-stone-900 dark:text-stone-100 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg">Günü Kapat & Z-Raporu Mühürle</h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Resmi gün sonu devir ve mali mühürleme işlemi
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloseDayConfirmModal(false)}
+                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Closure Info Card */}
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 space-y-2 text-xs">
+              <div className="flex items-center gap-2 font-black text-amber-700 dark:text-amber-300 text-sm">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Z-Raporu No: Z-{String((dailyZReports?.length || 0) + 1).padStart(4, '0')}</span>
+              </div>
+              <p className="text-stone-600 dark:text-stone-300 leading-relaxed">
+                Günü kapattığınızda şu anki ciro ve satışlar bu Z-raporuna kilitlenerek arşive kaldırılacaktır. Yarının / yeni günün cirosu dünkü ciroyla toplanmayıp tertemiz <strong>0 ₺</strong>'den başlayacaktır.
+              </p>
+            </div>
+
+            {/* Financial Highlights */}
+            <div className="bg-stone-50 dark:bg-stone-850 rounded-2xl p-4 border border-stone-200 dark:border-stone-800 space-y-2.5 text-xs">
+              <div className="flex justify-between items-center text-sm font-black border-b border-stone-200 dark:border-stone-700 pb-2">
+                <span>Mühürlenecek Toplam Ciro:</span>
+                <span className="text-amber-600 dark:text-amber-400 text-base">
+                  {formatCurrency(unsealedRevenue, settings.currencySymbol)}
+                </span>
+              </div>
+              <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                <span>Kapanan Adisyon Adedi:</span>
+                <span className="font-bold">{unsealedOrders.length} Adet</span>
+              </div>
+              <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                <span>Nakit Tahsilat:</span>
+                <span className="font-bold">{formatCurrency(unsealedNakit, settings.currencySymbol)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                <span>Kredi Kartı:</span>
+                <span className="font-bold">{formatCurrency(unsealedKredi, settings.currencySymbol)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                <span>Yemek Çeki / Kartı:</span>
+                <span className="font-bold">{formatCurrency(unsealedYemek, settings.currencySymbol)}</span>
+              </div>
+            </div>
+
+            {/* Open Tables Rollover Status */}
+            <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/50 rounded-2xl p-3 text-xs space-y-1">
+              <div className="flex items-center justify-between font-bold text-sky-800 dark:text-sky-300">
+                <span>Devreden Açık Masalar:</span>
+                <span>{activeOpenTables.length} Masa ({formatCurrency(activeOpenAmount, settings.currencySymbol)})</span>
+              </div>
+              <p className="text-[11px] text-sky-700/80 dark:text-sky-300/80">
+                Açık masalar silinmez, yeni güne otomatik olarak güvenle devreder.
+              </p>
+            </div>
+
+            {/* Devreden Müşteri Borçları (Veresiye / Açık Hesap) */}
+            <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-3 text-xs space-y-1.5">
+              <div className="flex items-center justify-between font-bold text-rose-800 dark:text-rose-300">
+                <span className="flex items-center gap-1.5">
+                  <UserX className="w-4 h-4 text-rose-500" />
+                  <span>Devreden Müşteri Borçları (Veresiye):</span>
+                </span>
+                <span className="font-black text-rose-600 dark:text-rose-400">
+                  {activeUnpaidDebtCount} Müşteri ({formatCurrency(activeUnpaidDebtAmount, settings.currencySymbol)})
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-700/90 dark:text-rose-300/90 leading-relaxed">
+                📌 <strong>Borç Devir Kuralı:</strong> Bu günden borçlu olan müşteriler tahsil edilene kadar diğer günlere borçlu olarak devredilir. Müşteri borcunu ödemeye geldiğinde tahsilat o günün kasasına ve cirosuna işlenecektir.
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowCloseDayConfirmModal(false)}
+                className="w-full sm:w-auto flex-1 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold py-3 px-4 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                İptal / Vazgeç
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteCloseDay}
+                className="w-full sm:w-auto flex-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black py-3 px-5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg hover:shadow-xl active:scale-95"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Evet, Günü Kapat & Z-Raporu Yazdır</span>
               </button>
             </div>
           </div>
@@ -5487,9 +6589,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 text-xs font-bold animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div
+          onClick={() => setToastMessage(null)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 bg-stone-900 hover:bg-stone-850 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 text-xs font-bold animate-in fade-in slide-in-from-bottom-5 duration-200 cursor-pointer select-none"
+          title="Kapatmak için tıklayın"
+        >
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           <span>{toastMessage}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setToastMessage(null);
+            }}
+            className="ml-1 p-1 hover:bg-stone-800 rounded-lg text-stone-400 hover:text-white"
+            title="Kapat"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 

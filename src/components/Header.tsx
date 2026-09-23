@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserRole, RestaurantSettings, AppUser, KitchenNotification } from '../types';
-import { Utensils, ChefHat, ShieldCheck, Clock, AlertTriangle, RefreshCw, Smartphone, LogOut, User, FilePlus, Bell, Check, ArrowRight, Volume2, Trash2 } from 'lucide-react';
+import { Utensils, ChefHat, ShieldCheck, Clock, AlertTriangle, RefreshCw, Smartphone, LogOut, User, FilePlus, Bell, Check, ArrowRight, Volume2, Trash2, BookOpen, KeyRound } from 'lucide-react';
 import { formatCurrency, getElapsedTimeMinutes } from '../utils/formatters';
 import { playKitchenReadyChime } from '../utils/audioAlert';
 
@@ -17,8 +17,10 @@ interface HeaderProps {
   onTabChange: (tab: 'tables' | 'kitchen' | 'admin') => void;
   currentUser: AppUser | null;
   onLogout: () => void;
+  onOpenChangePasswordModal?: () => void;
   onOpenCriticalStockModal?: () => void;
   onOpenAddInvoiceModal?: () => void;
+  onOpenUserManualModal?: () => void;
   notifications?: KitchenNotification[];
   onMarkNotificationRead?: (id?: string, all?: boolean) => void;
   onClearNotifications?: () => void;
@@ -39,8 +41,10 @@ export const Header: React.FC<HeaderProps> = ({
   onTabChange,
   currentUser,
   onLogout,
+  onOpenChangePasswordModal,
   onOpenCriticalStockModal,
   onOpenAddInvoiceModal,
+  onOpenUserManualModal,
   notifications = [],
   onMarkNotificationRead,
   onClearNotifications,
@@ -104,13 +108,13 @@ export const Header: React.FC<HeaderProps> = ({
         </h1>
       </div>
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between min-h-14 py-1.5 gap-2 sm:gap-4">
+      <div className="w-full max-w-[1720px] mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="flex items-center justify-between min-h-13 sm:min-h-14 py-1.5 gap-2 lg:gap-3">
           
-          {/* Logo Badge (Büyütülmüş) */}
+          {/* Logo Badge (Kompakt ve Orantılı) */}
           <div className="flex items-center shrink-0">
             {(settings.logoUrl || '/logo.svg') ? (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white shadow-lg p-1.5 overflow-hidden shrink-0 flex items-center justify-center border-2 border-amber-500 ring-2 ring-amber-500/20 transition-transform hover:scale-105">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white shadow-md p-1 overflow-hidden shrink-0 flex items-center justify-center border-2 border-amber-500 ring-2 ring-amber-500/20 transition-transform hover:scale-105">
                 <img 
                   src={settings.logoUrl || '/logo.svg'} 
                   alt={settings.name || 'Meriç Belediyesi'} 
@@ -118,26 +122,27 @@ export const Header: React.FC<HeaderProps> = ({
                 />
               </div>
             ) : (
-              <div className="bg-amber-500 text-stone-950 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl font-bold shadow-lg shadow-amber-500/20 flex items-center justify-center shrink-0 border-2 border-amber-400">
-                <Utensils className="w-8 h-8 sm:w-10 sm:h-10" />
+              <div className="bg-amber-500 text-stone-950 w-10 h-10 sm:w-12 sm:h-12 rounded-xl font-bold shadow-md shadow-amber-500/20 flex items-center justify-center shrink-0 border-2 border-amber-400">
+                <Utensils className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
             )}
           </div>
 
-          {/* Center Navigation Tabs */}
-          <div className="hidden md:flex items-center bg-stone-800/80 p-1 rounded-xl border border-stone-700/60 shrink-0">
+          {/* Center Navigation Tabs (Otomatik Ölçeklenen) */}
+          <div className="hidden md:flex items-center bg-stone-800/90 p-1 rounded-xl border border-stone-700/60 shrink-0">
             {canAccessTables && (
               <button
                 id="nav-tables-btn"
                 onClick={() => { onTabChange('tables'); onRoleChange('pos'); }}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === 'tables'
                     ? 'bg-amber-500 text-stone-950 shadow-sm font-bold'
                     : 'text-stone-300 hover:text-white hover:bg-stone-700/50'
                 }`}
               >
-                <Smartphone className="w-4 h-4" />
-                <span>Masa & Adisyon (POS)</span>
+                <Smartphone className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xl:inline">Masa & Adisyon (POS)</span>
+                <span className="xl:hidden">Masa POS</span>
               </button>
             )}
 
@@ -145,14 +150,15 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 id="nav-kitchen-btn"
                 onClick={() => { onTabChange('kitchen'); onRoleChange('kitchen'); }}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === 'kitchen'
                     ? 'bg-amber-500 text-stone-950 shadow-sm font-bold'
                     : 'text-stone-300 hover:text-white hover:bg-stone-700/50'
                 }`}
               >
-                <ChefHat className="w-4 h-4" />
-                <span>Mutfak Ekranı</span>
+                <ChefHat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xl:inline">Mutfak Ekranı</span>
+                <span className="xl:hidden">Mutfak</span>
               </button>
             )}
 
@@ -160,35 +166,49 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 id="nav-admin-btn"
                 onClick={() => { onTabChange('admin'); onRoleChange('admin'); }}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                   activeTab === 'admin'
                     ? 'bg-amber-500 text-stone-950 shadow-sm font-bold'
                     : 'text-stone-300 hover:text-white hover:bg-stone-700/50'
                 }`}
               >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Yönetim Paneli</span>
+                <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden xl:inline">Yönetim Paneli</span>
+                <span className="xl:hidden">Yönetim</span>
               </button>
             )}
+          </div>
 
+          {/* Quick Stats, Actions & User Profile */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Quick Fiş & Fatura Ekle Button */}
             {canManageInvoices && (
               <button
                 type="button"
                 onClick={onOpenAddInvoiceModal}
                 title="Gelen Mal Alım Fişi veya İşletme Faturası Ekle"
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-stone-950 border border-amber-500/40 transition-all cursor-pointer shadow-xs"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl text-xs font-bold bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-stone-950 border border-amber-500/40 transition-all cursor-pointer shadow-xs shrink-0"
               >
-                <FilePlus className="w-4 h-4" />
-                <span>Fiş / Fatura Ekle</span>
+                <FilePlus className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+                <span className="hidden 2xl:inline">Fiş / Fatura Ekle</span>
+                <span className="hidden sm:inline 2xl:hidden">Fiş Ekle</span>
               </button>
             )}
-          </div>
 
-          {/* Quick Stats & User Profile / Logout */}
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Quick Kullanım Kılavuzu Button */}
+            {onOpenUserManualModal && (
+              <button
+                type="button"
+                onClick={onOpenUserManualModal}
+                title="Kullanım Kitapçığı & Kılavuz"
+                className="p-1.5 sm:p-2 text-amber-400 hover:text-stone-950 bg-stone-800 hover:bg-amber-500 rounded-xl border border-amber-500/30 transition-colors cursor-pointer shrink-0"
+              >
+                <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </button>
+            )}
+
             {/* Kitchen Ready Notifications Bell */}
-            <div className="relative" ref={notifDropdownRef}>
+            <div className="relative shrink-0" ref={notifDropdownRef}>
               <button
                 type="button"
                 onClick={() => setIsNotifOpen((prev) => !prev)}
@@ -370,58 +390,77 @@ export const Header: React.FC<HeaderProps> = ({
               )}
             </div>
 
-            {/* Clock & Critical Stock Badge Stacked (Alt Alta) */}
-            <div className="flex flex-col items-stretch justify-center gap-1 shrink-0">
-              {/* Live Clock */}
-              <div className="flex items-center justify-center gap-1.5 text-[11px] text-stone-300 bg-stone-800 px-2.5 py-1 rounded-lg border border-stone-700/60 leading-none">
-                <Clock className="w-3 h-3 text-amber-400 shrink-0" />
-                <span className="font-mono font-medium">{currentTime}</span>
-              </div>
-
-              {/* Low stock badge - Clickable */}
-              {lowStockCount > 0 && (
-                <button
-                  onClick={onOpenCriticalStockModal}
-                  title="Kritik stoktaki ürün ve hammaddelerin listesini gör"
-                  className="flex items-center justify-center gap-1.5 text-[11px] font-bold bg-rose-900/70 hover:bg-rose-800 text-rose-200 hover:text-white px-2.5 py-1 rounded-lg border border-rose-600/60 transition-all cursor-pointer whitespace-nowrap animate-pulse leading-none"
-                >
-                  <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
-                  <span>{lowStockCount} Kritik Stok</span>
-                </button>
-              )}
+            {/* Live Clock (Hidden on small/medium screens to prevent overflow) */}
+            <div className="hidden xl:flex items-center justify-center gap-1.5 text-[11px] text-stone-300 bg-stone-800 px-2.5 py-1.5 rounded-xl border border-stone-700/60 leading-none shrink-0 font-mono">
+              <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>{currentTime}</span>
             </div>
 
-            {/* Active Bills Total */}
-            <div className="hidden sm:flex flex-col items-end">
-              <span className="text-[10px] text-stone-400 uppercase tracking-wider">Açık Masalar</span>
-              <span className="text-sm font-bold text-amber-400">
+            {/* Low Stock Badge - Clickable if critical stock exists */}
+            {lowStockCount > 0 && (
+              <button
+                onClick={onOpenCriticalStockModal}
+                title="Kritik stoktaki ürün ve hammaddelerin listesini gör"
+                className="flex items-center justify-center gap-1 text-[11px] font-bold bg-rose-900/70 hover:bg-rose-800 text-rose-200 hover:text-white px-2.5 py-1.5 rounded-xl border border-rose-600/60 transition-all cursor-pointer whitespace-nowrap animate-pulse leading-none shrink-0"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span className="hidden sm:inline">{lowStockCount} Kritik</span>
+                <span className="sm:hidden">{lowStockCount}</span>
+              </button>
+            )}
+
+            {/* Active Bills Total (Shown on wider desktop) */}
+            <div className="hidden 2xl:flex flex-col items-end leading-tight shrink-0 pl-1 border-l border-stone-800">
+              <span className="text-[9px] text-stone-400 uppercase tracking-wider font-semibold">Açık Masalar</span>
+              <span className="text-xs font-bold text-amber-400 font-mono mt-0.5">
                 {occupiedTableCount}/{totalTableCount} ({formatCurrency(openOrdersTotal, settings.currencySymbol)})
               </span>
             </div>
 
-            {/* Logged in User Profile Info & Logout Button */}
+            {/* Logged in User Profile Info, Change Password & Logout Button */}
             {currentUser && (
-              <div className="flex items-center gap-2 pl-2 border-l border-stone-800">
-                <div className="hidden sm:flex items-center gap-2 bg-stone-800/90 px-3 py-1 rounded-xl border border-stone-700/70">
-                  <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
+              <div className="flex items-center gap-1 sm:gap-1.5 pl-1.5 sm:pl-2 border-l border-stone-800 shrink-0">
+                {/* Clickable Profile Badge */}
+                <button
+                  type="button"
+                  onClick={onOpenChangePasswordModal}
+                  title="Kendi Şifrenizi / PIN Kodunuzu Değiştirin"
+                  className="flex items-center gap-1.5 bg-stone-800/90 hover:bg-stone-750 hover:border-amber-500/60 px-2 sm:px-2.5 py-1 rounded-xl border border-stone-700/70 transition-all cursor-pointer group text-left shrink-0"
+                >
+                  <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center group-hover:bg-amber-500 group-hover:text-stone-950 transition-colors shrink-0">
                     {currentUser.name.charAt(0)}
                   </div>
-                  <div className="text-left">
-                    <span className="text-xs font-bold text-stone-100 block leading-tight">
+                  <div className="text-left hidden sm:block">
+                    <span className="text-xs font-bold text-stone-100 block leading-tight truncate max-w-[75px] md:max-w-[100px] lg:max-w-[120px]">
                       {currentUser.name}
                     </span>
                     <span className="text-[10px] text-amber-400 font-mono block leading-tight">
                       {currentUser.role === 'admin' ? 'Yönetici' : currentUser.role === 'kitchen' ? 'Mutfak' : 'Garson'}
                     </span>
                   </div>
-                </div>
+                  <KeyRound className="w-3 h-3 text-stone-400 group-hover:text-amber-400 transition-colors ml-0.5 shrink-0" />
+                </button>
 
+                {/* Dedicated Change Password Button */}
+                {onOpenChangePasswordModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenChangePasswordModal}
+                    title="Kendi Şifrenizi / PIN Kodunuzu Değiştirin"
+                    className="hidden 2xl:flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 px-2 py-1.5 rounded-xl border border-amber-500/30 text-xs font-bold transition-all cursor-pointer shrink-0"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>Şifre</span>
+                  </button>
+                )}
+
+                {/* Logout Button */}
                 <button
                   onClick={onLogout}
                   title="Çıkış Yap (Oturumu Kapat)"
-                  className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-2 rounded-xl border border-red-500/30 text-xs font-bold transition-all"
+                  className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-2 sm:px-2.5 py-1.5 rounded-xl border border-red-500/30 text-xs font-bold transition-all cursor-pointer shrink-0"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="hidden sm:inline">Çıkış</span>
                 </button>
               </div>
@@ -432,9 +471,9 @@ export const Header: React.FC<HeaderProps> = ({
               id="reset-demo-data-btn"
               onClick={onResetData}
               title="Örnek verileri sıfırla"
-              className="p-2 text-stone-400 hover:text-stone-200 bg-stone-800 hover:bg-stone-700 rounded-lg border border-stone-700 transition-colors"
+              className="p-1.5 sm:p-2 text-stone-400 hover:text-stone-200 bg-stone-800 hover:bg-stone-700 rounded-xl border border-stone-700/70 transition-colors shrink-0"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

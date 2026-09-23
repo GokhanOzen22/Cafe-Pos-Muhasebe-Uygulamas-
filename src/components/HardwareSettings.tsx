@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { RestaurantSettings, PrinterDevice, BarcodeScannerConfig } from '../types';
 import {
   Printer, Scan, Cpu, Settings2, Plus, Trash2, Edit3, CheckCircle2,
   AlertCircle, RefreshCw, Volume2, Wifi, Usb, Cable, Check, Play,
-  HelpCircle, Tag, Smartphone, QrCode, Globe, Copy, ExternalLink, ShieldCheck, KeyRound, Save
+  HelpCircle, Tag, Smartphone, QrCode, Globe, Copy, ExternalLink, ShieldCheck, KeyRound, Save, Zap
 } from 'lucide-react';
 
 interface HardwareSettingsProps {
@@ -75,6 +75,89 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
     });
     setSaveNetworkSuccess(true);
     setTimeout(() => setSaveNetworkSuccess(false), 3000);
+  };
+
+  // Direct (Silent) Printing States
+  const [silentPrinting, setSilentPrinting] = useState<boolean>(settings.silentPrinting !== false);
+  const [selectedPrinterName, setSelectedPrinterName] = useState<string>(settings.selectedPrinterName || 'POS-80C');
+  const [systemPrinters, setSystemPrinters] = useState<
+    Array<{ name: string; displayName?: string; isDefault?: boolean }>
+  >([]);
+  const [isScanningPrinters, setIsScanningPrinters] = useState<boolean>(false);
+  const [silentTestStatus, setSilentTestStatus] = useState<string | null>(null);
+
+  const fetchSystemPrinters = async () => {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.getPrinters === 'function'
+    ) {
+      setIsScanningPrinters(true);
+      try {
+        const list = await window.electronAPI.getPrinters();
+        if (list && list.length > 0) {
+          setSystemPrinters(list);
+          const defaultPrn = list.find((p) => p.isDefault);
+          if (defaultPrn && (!settings.selectedPrinterName || settings.selectedPrinterName === 'POS-80C')) {
+            setSelectedPrinterName(defaultPrn.name);
+          }
+        }
+      } catch (err) {
+        console.warn('Windows yazıcıları alınamadı:', err);
+      } finally {
+        setIsScanningPrinters(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchSystemPrinters();
+  }, []);
+
+  const handleToggleSilentPrinting = (enabled: boolean) => {
+    setSilentPrinting(enabled);
+    onUpdateSettings({
+      ...settings,
+      silentPrinting: enabled,
+      selectedPrinterName,
+    });
+  };
+
+  const handleSelectPrinterName = (name: string) => {
+    setSelectedPrinterName(name);
+    onUpdateSettings({
+      ...settings,
+      silentPrinting,
+      selectedPrinterName: name,
+    });
+  };
+
+  const handleSilentTestPrint = async () => {
+    setSilentTestStatus('Doğrudan test fişi yazıcıya gönderiliyor (Diyalogsuz)...');
+    try {
+      if (
+        typeof window !== 'undefined' &&
+        window.electronAPI &&
+        typeof window.electronAPI.printDirect === 'function'
+      ) {
+        const res = await window.electronAPI.printDirect({
+          silent: true,
+          deviceName: selectedPrinterName || 'POS-80C',
+          copies: 1,
+        });
+        if (res.success) {
+          setSilentTestStatus('✅ Test fişi yazıcı seçimi penceresi açılmadan DOĞRUDAN termal yazıcıya iletildi!');
+        } else {
+          setSilentTestStatus(`⚠️ Doğrudan yazdırma uyarısı: ${res.failureReason || 'Yazıcı hazır olmayabilir.'}`);
+        }
+      } else {
+        window.print();
+        setSilentTestStatus('✅ Yazdırma komutu iletildi.');
+      }
+    } catch (e: any) {
+      setSilentTestStatus(`❌ Hata: ${e.message || 'Yazdırılamadı'}`);
+    }
+    setTimeout(() => setSilentTestStatus(null), 6000);
   };
 
   // State for Printer Modal
@@ -695,6 +778,147 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
                 Modem portu açmadan güvenli şifreli tünel oluşturmak için bilgisayarınıza Cloudflare Tunnel veya Ngrok kurup dış domain oluşturabilirsiniz.
               </p>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 0: DIRECT (SILENT) PRINTING SETTING */}
+      <div className="bg-white dark:bg-stone-900 p-6 rounded-3xl border border-stone-200 dark:border-stone-800 shadow-xs space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-stone-200 dark:border-stone-800 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-500" />
+                Doğrudan (Sessiz) Yazdırma & Kasa Fişi Ayarları
+              </h3>
+              <span
+                className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                  silentPrinting
+                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                    : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+                }`}
+              >
+                {silentPrinting ? 'Doğrudan Yazdırma: AKTİF' : 'Pasif (Diyalog Açılır)'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+              "Yazdır" butonuna basıldığında Windows yazıcı seçim penceresini atlar, fişi saniyeler içinde direkt termal fiş yazıcısına iletir.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSilentTestPrint}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Diyalogsuz Test Yazdır</span>
+            </button>
+          </div>
+        </div>
+
+        {silentTestStatus && (
+          <div className="p-3 rounded-xl text-xs font-semibold bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+            <span>{silentTestStatus}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Toggle Card */}
+          <div className="p-4 bg-stone-50 dark:bg-stone-950/60 rounded-2xl border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-4">
+            <div>
+              <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100">
+                Doğrudan Yazdırma Modu
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                Açık olduğunda hiçbir sistem seçim ekranı çıkmaz, tek tıkla kesintisiz fiş çıkar.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleToggleSilentPrinting(!silentPrinting)}
+              className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                silentPrinting ? 'bg-emerald-500 justify-end' : 'bg-stone-300 dark:bg-stone-700 justify-start'
+              }`}
+            >
+              <div className="bg-white w-4 h-4 rounded-full shadow-md" />
+            </button>
+          </div>
+
+          {/* Target Printer Selection */}
+          <div className="p-4 bg-stone-50 dark:bg-stone-950/60 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-xs text-stone-700 dark:text-stone-300">
+                Hedef Termal Yazıcı Adı (Windows):
+              </label>
+              {typeof window !== 'undefined' && window.electronAPI && (
+                <button
+                  type="button"
+                  onClick={fetchSystemPrinters}
+                  disabled={isScanningPrinters}
+                  className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-semibold"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isScanningPrinters ? 'animate-spin' : ''}`} />
+                  <span>Yazıcıları Tara</span>
+                </button>
+              )}
+            </div>
+
+            {systemPrinters.length > 0 ? (
+              <select
+                value={selectedPrinterName}
+                onChange={(e) => handleSelectPrinterName(e.target.value)}
+                className="w-full bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-stone-900 dark:text-stone-100 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500"
+              >
+                {systemPrinters.map((prn) => (
+                  <option key={prn.name} value={prn.name}>
+                    {prn.name} {prn.isDefault ? '(Windows Varsayılan)' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={selectedPrinterName}
+                  onChange={(e) => handleSelectPrinterName(e.target.value)}
+                  placeholder="Örn: POS-80C veya Kasa Termal"
+                  className="w-full bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-stone-900 dark:text-stone-100 px-3 py-2 rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-stone-400">Hızlı Seçim:</span>
+                  {['POS-80C', 'POS-80', 'XP-80C', 'Termal Fiş'].map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => handleSelectPrinterName(name)}
+                      className={`text-[10px] px-2 py-0.5 rounded-md font-bold transition-all ${
+                        selectedPrinterName === name
+                          ? 'bg-amber-500 text-stone-950'
+                          : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:text-stone-900'
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Kiosk Mode / Electron info note */}
+        <div className="p-3.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-3 text-xs text-stone-700 dark:text-stone-300">
+          <ShieldCheck className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold text-stone-900 dark:text-stone-100">
+              Kasa & Masaüstü Uygulaması Entegrasyonu
+            </p>
+            <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
+              Masaüstü uygulamamızda (<span className="font-mono text-amber-600 dark:text-amber-400">baslat.bat</span>) Chromium sessiz yazdırma parametresi (<span className="font-mono">--kiosk-printing</span>) ve doğrudan IPC yazıcı sürücüsü otomatik aktiftir. Tarayıcıdan kullanıyorsanız da Chrome kısayolunuza <span className="font-mono bg-stone-200 dark:bg-stone-800 px-1 py-0.5 rounded">--kiosk-printing</span> parametresi ekleyebilirsiniz.
+            </p>
           </div>
         </div>
       </div>

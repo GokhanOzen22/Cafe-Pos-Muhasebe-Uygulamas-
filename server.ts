@@ -487,6 +487,8 @@ async function startServer() {
     const users = getKV('users', initialUsers);
     const notifications = getKV('kitchen_notifications', []);
 
+    const dailyZReports = getKV<any[]>('daily_zreports', []);
+
     res.json({
       zones,
       tables,
@@ -499,6 +501,7 @@ async function startServer() {
       settings,
       users,
       notifications,
+      dailyZReports,
       serverTime: new Date().toISOString(),
     });
   });
@@ -516,6 +519,7 @@ async function startServer() {
       settings,
       users,
       notifications,
+      dailyZReports,
       log,
     } = req.body;
 
@@ -530,6 +534,7 @@ async function startServer() {
     if (settings !== undefined) setKV('settings', settings);
     if (users !== undefined) setKV('users', users);
     if (notifications !== undefined) setKV('kitchen_notifications', notifications);
+    if (dailyZReports !== undefined) setKV('daily_zreports', dailyZReports);
 
     if (log) {
       addSystemLog({
@@ -631,6 +636,7 @@ async function startServer() {
     setKV('purchase_invoices', initialPurchaseInvoices);
     setKV('expense_invoices', initialExpenseInvoices);
     setKV('kitchen_notifications', []);
+    setKV('daily_zreports', []);
 
     addSystemLog({
       userId: req.body.userId || 'admin',
