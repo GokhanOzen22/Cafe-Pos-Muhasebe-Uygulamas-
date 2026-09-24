@@ -268,6 +268,17 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
+  // Enable CORS for external access (No-IP DDNS / remote devices / tablets)
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   // Ensure data directory exists
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -436,6 +447,16 @@ async function startServer() {
   }
 
   // API Endpoints
+  app.get('/api/ping', (req, res) => {
+    res.json({
+      status: 'ok',
+      message: 'Meriç Belediyesi Kasa Sunucusu Aktif',
+      wanDomain: 'adisyonkasa.ddns.net',
+      port: PORT,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
   app.get('/api/server-info', (req, res) => {
     const localIp = getLocalNetworkIp();
     let logCount = 0;
@@ -454,6 +475,8 @@ async function startServer() {
       localIp,
       port: PORT,
       localUrl: `http://${localIp}:${PORT}`,
+      wanDomain: 'adisyonkasa.ddns.net',
+      wanUrl: `http://adisyonkasa.ddns.net:${PORT}`,
       dbPath: DB_FILE,
       jsonPath: JSON_FILE,
       totalLogs: logCount,
@@ -681,8 +704,12 @@ async function startServer() {
 ------------------------------------------------
 📍 Yerel Bilgisayar (Kasa): http://localhost:${PORT}
 🌐 Yerel Wi-Fi Ağı (Tabletler): http://${localIp}:${PORT}
+🌍 Uzaktan Dış Ağ (No-IP DDNS): http://adisyonkasa.ddns.net:${PORT}
 📁 Yerel SQLite Veritabanı: ${DB_FILE}
 📁 JSON Yedek Dosyası: ${JSON_FILE}
+------------------------------------------------
+💡 İpucu: Dışarıdan veya telefondan erişmek için modeminizde 3000 portunu
+   bu bilgisayarın yerel IP adresine (${localIp}) yönlendirin.
 ------------------------------------------------
     `);
   });

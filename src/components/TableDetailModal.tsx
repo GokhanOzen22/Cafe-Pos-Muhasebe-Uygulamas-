@@ -692,25 +692,27 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
             </div>
 
             {/* Category tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-stone-300 dark:scrollbar-thumb-stone-700 text-xs">
               <button
+                type="button"
                 onClick={() => setSelectedCategory('all')}
-                className={`px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap ${
+                className={`px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl font-bold transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   selectedCategory === 'all'
                     ? 'bg-amber-500 text-stone-950 shadow-xs'
-                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                    : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
                 }`}
               >
                 Tüm Menü ({menuItems.length})
               </button>
               {categories.map((cat) => (
                 <button
+                  type="button"
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`px-3.5 py-2 rounded-xl font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  className={`px-3 py-2 sm:px-3.5 sm:py-2 rounded-xl font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 shrink-0 cursor-pointer ${
                     selectedCategory === cat.id
-                      ? 'bg-amber-500 text-stone-950 shadow-xs'
-                      : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
+                      ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
+                      : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
                   }`}
                 >
                   {renderCategoryIcon(cat.iconName)}
@@ -720,44 +722,45 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Products Grid */}
+          {/* Products Grid - Auto Scaled to Viewport & Screen Size */}
           <div className="flex-1 overflow-y-auto pt-3 pr-1">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-2 sm:gap-3 auto-rows-fr">
               {filteredMenuItems.map((product) => {
                 const isLowStock = product.stockQuantity <= product.minStockAlert;
                 return (
                   <button
                     key={product.id}
+                    type="button"
                     onClick={() => handleAddItem(product)}
                     disabled={!product.isAvailable}
-                    className="p-3 bg-stone-50 dark:bg-stone-800/80 hover:bg-amber-50 dark:hover:bg-amber-950/20 border border-stone-200 dark:border-stone-700/60 hover:border-amber-400 rounded-2xl text-left transition-all group flex flex-col justify-between h-28 sm:h-32 active:scale-98 relative overflow-hidden"
+                    className="p-3 bg-stone-50 dark:bg-stone-800/80 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-stone-200 dark:border-stone-700/60 hover:border-amber-500/70 rounded-2xl text-left transition-all group flex flex-col justify-between min-h-[105px] sm:min-h-[115px] h-auto active:scale-98 relative overflow-hidden cursor-pointer shadow-2xs hover:shadow-sm"
                   >
-                    <div>
+                    <div className="space-y-1">
                       <div className="flex items-start justify-between gap-1">
-                        <h4 className="font-bold text-xs sm:text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 line-clamp-2">
+                        <h4 className="font-extrabold text-xs sm:text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 line-clamp-2 leading-snug">
                           {product.name}
                         </h4>
                       </div>
                       {product.description && (
-                        <p className="text-[10px] sm:text-[11px] text-stone-500 dark:text-stone-400 line-clamp-1 sm:line-clamp-2 mt-0.5">
+                        <p className="text-[10px] sm:text-[11px] text-stone-500 dark:text-stone-400 line-clamp-2 leading-tight">
                           {product.description}
                         </p>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-stone-200/60 dark:border-stone-700/50">
-                      <span className="font-extrabold text-xs sm:text-sm text-stone-900 dark:text-amber-400">
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-stone-200/80 dark:border-stone-750/70">
+                      <span className="font-black text-xs sm:text-sm text-stone-950 dark:text-amber-400">
                         {formatCurrency(product.price, settings.currencySymbol)}
                       </span>
 
                       <span
-                        className={`text-[9px] sm:text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        className={`text-[9.5px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                           isLowStock
-                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                            : 'bg-stone-200/60 dark:bg-stone-700 text-stone-600 dark:text-stone-300'
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300/40'
+                            : 'bg-stone-200/70 dark:bg-stone-700/70 text-stone-700 dark:text-stone-300'
                         }`}
                       >
-                        Stok: {product.stockQuantity}
+                        {product.stockQuantity} ad.
                       </span>
                     </div>
                   </button>

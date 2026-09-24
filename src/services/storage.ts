@@ -117,7 +117,23 @@ export class StorageService {
 
   static getUsers(): AppUser[] {
     const data = localStorage.getItem(STORAGE_KEYS.USERS);
-    return data ? JSON.parse(data) : initialUsers;
+    if (!data) return initialUsers;
+    try {
+      const parsed: AppUser[] = JSON.parse(data);
+      return parsed.map((u) => {
+        const isPosOrAdmin = u.role === 'pos' || u.role === 'admin';
+        return {
+          ...u,
+          permissions: {
+            ...u.permissions,
+            canViewReports: u.permissions?.canViewReports !== undefined ? u.permissions.canViewReports : isPosOrAdmin,
+            canCloseDay: u.permissions?.canCloseDay !== undefined ? u.permissions.canCloseDay : isPosOrAdmin,
+          }
+        };
+      });
+    } catch {
+      return initialUsers;
+    }
   }
 
   static saveUsers(users: AppUser[], sync = true): void {

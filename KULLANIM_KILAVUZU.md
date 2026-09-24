@@ -18,6 +18,7 @@ Bu kullanım kılavuzu; garsonlar, mutfak personeli, kasiyerler ve tesis yöneti
 10. [Yönetim Paneli, Menü, Fiyat Güncelleme ve Z Raporu](#10-yönetim-paneli-menü-fiyat-ve-z-raporu)
 11. [Çoklu Cihaz, Tablet ve Telefon Entegrasyonu](#11-çoklu-cihaz-tablet-ve-telefon-entegrasyonu)
 12. [Sıkça Sorulan Sorular & Sorun Giderme](#12-sıkça-sorulan-sorular--sorun-giderme)
+13. [Sabit IP Olmadan No-IP (adisyonkasa.ddns.net) ile Uzaktan Erişim](#13-sabit-ip-olmadan-no-ip-adisyonkasaddnsnet-ile-uzaktan-erişim)
 
 ---
 
@@ -251,3 +252,26 @@ Garsonların el terminali (tablet veya akıllı telefon) ile çalışabilmesi i�
   - *Cevap:* Hayır. Veriler anlık olarak yerel SQLite veri tabanına kaydedilir. Bilgisayar yeniden açıldığında tüm açık masalar ve bakiyeler aynen geri yüklenir.
 - **Soru: Veritabanı yedeğini nasıl alabilirim?**
   - *Cevap:* Yönetim Paneli > Veritabanı sekmesinden "JSON Yedek İndir" butonuna basarak tüm adisyon, stok ve menü geçmişinizi tek tıkla güvenle saklayabilirsiniz.
+
+---
+
+## 13. SABİT IP OLMADAN NO-IP (adisyonkasa.ddns.net) İLE UZAKTAN ERİŞİM
+
+İşletmenizde Türk Telekom / Turkcell Superonline vb. operatörlerden alınmış **sabit IP olmasa dahi** sistem No-IP Dinamik DNS altyapısı ile uzaktan erişime tam uyumludur.
+
+### 🌐 Dış Ağ Bağlantı Adresi:
+```
+http://adisyonkasa.ddns.net:3000
+```
+
+### 🛠️ 3 Adımda Kurulum:
+1. **Modem Port Yönlendirme (Port Forwarding / NAT):**
+   - Tarayıcınızda modeminize girin (`192.168.1.1`).
+   - **Gelişmiş > NAT / Port Yönlendirme (Port Forwarding)** bölümüne gidin.
+   - **Harici Port:** `3000`, **Dahili Port:** `3000`, **Protokol:** `TCP`, **Hedef IP:** Kasa bilgisayarınızın yerel IP adresi (örn. `192.168.1.100`).
+2. **No-IP Dinamik Güncelleme (DUC veya Modem DDNS):**
+   - Modeminizin **Dinamik DNS (DDNS)** ayarına No-IP hesabınızı ve `adisyonkasa.ddns.net` adresinizi tanımlayın ya da kasa bilgisayarına ücretsiz **No-IP DUC** (Dynamic Update Client) kurun.
+   - Böylece internet sağlayıcınız IP adresinizi her değiştirdiğinde `adisyonkasa.ddns.net` adresi otomatik güncellenir.
+3. **Dışarıdan ve Cepten Bağlantı:**
+   - Evden veya 4G/5G hücresel veriden telefon tarayıcınıza `http://adisyonkasa.ddns.net:3000` yazın veya Yönetim Paneli > Donanım / Yerel Veritabanı ekranındaki QR kodu okutun.
+   - 4 haneli PIN kodunuzu girerek dilediğiniz yerden anlık adisyonları, masaları ve ciroyu canlı olarak izleyin.

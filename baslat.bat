@@ -5,6 +5,9 @@ echo ========================================================
 echo   MERİÇ BELEDİYESİ SOSYAL TESİSLERİ KASA SUNUCUSU
 echo ========================================================
 echo.
+echo Yerel Adres:      http://localhost:3000
+echo Uzaktan (No-IP):  http://adisyonkasa.ddns.net:3000
+echo.
 echo Sunucu başlatılıyor, lütfen bekleyin...
 echo.
 

@@ -3,7 +3,7 @@ import { AppUser, UserPermissions, UserRole } from '../types';
 import {
   Users, UserPlus, ShieldCheck, Smartphone, ChefHat, Key, Lock, Unlock,
   Edit3, Trash2, Search, Check, X, Eye, EyeOff, ShieldAlert,
-  Sliders, Shield, AlertCircle
+  Sliders, Shield, AlertCircle, BarChart3, CheckCircle2
 } from 'lucide-react';
 
 interface UserManagementProps {
@@ -19,7 +19,8 @@ const DEFAULT_POS_PERMISSIONS: UserPermissions = {
   canClosePayment: false, // Garson / POS hesap kapatamasın, sadece hesap istesin
   canAddTable: false,
   canManageInvoices: false,
-  canViewReports: false,
+  canViewReports: true, // Garsonlar için gün kapatma ve rapor alma açık
+  canCloseDay: true, // Garsonlar için gün kapatma ve rapor alma açık
   canManageStock: false,
   canManageMenu: false,
   canManageUsers: false,
@@ -34,6 +35,7 @@ const DEFAULT_KITCHEN_PERMISSIONS: UserPermissions = {
   canAddTable: false,
   canManageInvoices: false,
   canViewReports: false,
+  canCloseDay: false,
   canManageStock: true,
   canManageMenu: false,
   canManageUsers: false,
@@ -48,6 +50,7 @@ const DEFAULT_ADMIN_PERMISSIONS: UserPermissions = {
   canAddTable: true,
   canManageInvoices: true,
   canViewReports: true,
+  canCloseDay: true,
   canManageStock: true,
   canManageMenu: true,
   canManageUsers: true,
@@ -70,6 +73,18 @@ const PERMISSION_CONFIG: Array<{
     label: 'Hesap Kapatma & Ödeme Alma',
     description: 'Adisyonu ödemeyle kapatma yetkisi (Kapalıysa garson sadece hesap ister)',
     icon: '💳',
+  },
+  {
+    key: 'canCloseDay',
+    label: 'Gün Kapatma Yetkisi',
+    description: 'Günü kapatıp resmi Z-Raporunu mühürleme ve arşive kaydetme',
+    icon: '🔒',
+  },
+  {
+    key: 'canViewReports',
+    label: 'Ciro & Rapor Görme',
+    description: 'Günlük ciro, satış istatistikleri ve Z-raporlarını inceleme',
+    icon: '📊',
   },
   {
     key: 'canManageInvoices',
@@ -100,12 +115,6 @@ const PERMISSION_CONFIG: Array<{
     label: 'Yeni Masa Ekleme Yetkisi',
     description: 'Bölgelere/Salonlara yeni masa ekleme yetkisi',
     icon: '🪑',
-  },
-  {
-    key: 'canViewReports',
-    label: 'Ciro & Z-Raporu Görme',
-    description: 'Günlük ciro, satış istatistikleri ve Z-raporlarını inceleme',
-    icon: '📊',
   },
   {
     key: 'canManageStock',
@@ -148,6 +157,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     ...DEFAULT_POS_PERMISSIONS,
   });
   const [formError, setFormError] = useState<string>('');
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   // Toggle visible PIN code display for a user
   const togglePinVisibility = (userId: string) => {
@@ -273,6 +283,32 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     onUpdateUsers(updatedUsers);
   };
 
+  // Batch toggle Day Closure and Reports for all waiters
+  const handleBatchGrantPosDayCloseAndReports = (enable: boolean) => {
+    const updatedUsers = users.map((u) => {
+      if (u.role === 'pos') {
+        return {
+          ...u,
+          permissions: {
+            ...u.permissions,
+            canCloseDay: enable,
+            canViewReports: enable,
+          },
+        };
+      }
+      return u;
+    });
+    onUpdateUsers(updatedUsers);
+    setFeedbackMessage(
+      enable
+        ? '✓ Tüm garsonlara Gün Kapatma ve Z-Raporu alma yetkisi başarıyla verildi.'
+        : '✓ Tüm garsonlardan Gün Kapatma ve Z-Raporu yetkisi kaldırıldı.'
+    );
+    setTimeout(() => {
+      setFeedbackMessage(null);
+    }, 4000);
+  };
+
   // Delete user handler
   const handleDeleteUser = (user: AppUser) => {
     if (user.isSystemAdmin) {
@@ -390,6 +426,66 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               <span className="font-semibold text-stone-800 dark:text-stone-200">{kitchenCount} Personel</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Floating Feedback Notification */}
+      {feedbackMessage && (
+        <div className="bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-lg flex items-center justify-between text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{feedbackMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFeedbackMessage(null)}
+            className="p-1 hover:bg-emerald-700 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Quick Permissions Batch Action Banner for Day Closure & Reports */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500 text-stone-950 font-bold flex items-center justify-center shrink-0 shadow-md">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm sm:text-base font-bold text-stone-900 dark:text-stone-100">
+                Garsonlar İçin Gün Kapatma & Z-Raporu Yetkilendirmesi
+              </h4>
+              <span className="text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                Hızlı İşlem
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+              Tüm garsonlara tek tıkla Gün Kapatma ve Z-Raporu alma yetkisi verebilir veya aşağıdaki kullanıcı kartlarından tek tek seçim yaparak açıp kapatabilirsiniz.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => handleBatchGrantPosDayCloseAndReports(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-md transition-all cursor-pointer active:scale-95"
+            title="Tüm garson personellerine gün kapatma ve rapor alma yetkisi tanımlar"
+          >
+            <Check className="w-4 h-4 stroke-[3]" />
+            <span>Tüm Garsonlara Yetki Ver</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBatchGrantPosDayCloseAndReports(false)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700 transition-all cursor-pointer"
+            title="Garson personellerinden gün kapatma ve rapor yetkisini kaldırır"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Garsonlardan Yetkiyi Al</span>
+          </button>
         </div>
       </div>
 
@@ -567,6 +663,59 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                         </>
                       )}
                     </button>
+                  </div>
+
+                  {/* Highlighted Day Close & Report Permission Toggle Bar */}
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-2.5 space-y-2 mt-3">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-amber-500">
+                      <span className="flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5" />
+                        Günü Kapatma & Z-Raporu Yetkisi
+                      </span>
+                      <span className="text-[10px] text-stone-400 font-normal">
+                        Hızlı Seçim
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSinglePermission(user.id, 'canCloseDay')}
+                        className={`p-2 rounded-xl border flex items-center justify-between transition-all cursor-pointer font-bold text-xs ${
+                          user.permissions?.canCloseDay
+                            ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-xs'
+                            : 'bg-stone-50 dark:bg-stone-800 text-stone-400 border-stone-200 dark:border-stone-700 hover:text-stone-200'
+                        }`}
+                        title="Tıklayarak Gün Kapatma yetkisini anlık açıp kapatabilirsiniz"
+                      >
+                        <span className="flex items-center gap-1 truncate">
+                          <Lock className="w-3.5 h-3.5 shrink-0" />
+                          <span>Gün Kapatma</span>
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black shrink-0 ${user.permissions?.canCloseDay ? 'bg-stone-950 text-amber-400' : 'bg-stone-700 text-stone-300'}`}>
+                          {user.permissions?.canCloseDay ? 'AÇIK' : 'KAPALI'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSinglePermission(user.id, 'canViewReports')}
+                        className={`p-2 rounded-xl border flex items-center justify-between transition-all cursor-pointer font-bold text-xs ${
+                          user.permissions?.canViewReports
+                            ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-xs'
+                            : 'bg-stone-50 dark:bg-stone-800 text-stone-400 border-stone-200 dark:border-stone-700 hover:text-stone-200'
+                        }`}
+                        title="Tıklayarak Rapor Görme yetkisini anlık açıp kapatabilirsiniz"
+                      >
+                        <span className="flex items-center gap-1 truncate">
+                          <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+                          <span>Rapor Görme</span>
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-black shrink-0 ${user.permissions?.canViewReports ? 'bg-stone-950 text-amber-400' : 'bg-stone-700 text-stone-300'}`}>
+                          {user.permissions?.canViewReports ? 'AÇIK' : 'KAPALI'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 

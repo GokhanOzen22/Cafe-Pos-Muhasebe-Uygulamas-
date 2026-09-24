@@ -18,6 +18,7 @@ export const initialUsers: AppUser[] = [
       canAddTable: true,
       canManageInvoices: true,
       canViewReports: true,
+      canCloseDay: true,
       canManageStock: true,
       canManageMenu: true,
       canManageUsers: true,
@@ -38,7 +39,8 @@ export const initialUsers: AppUser[] = [
       canClosePayment: false, // Garson hesap kapatamaz, sadece hesap ister
       canAddTable: false,
       canManageInvoices: false,
-      canViewReports: false,
+      canViewReports: true, // Garsonlar için rapor alma yetkisi açık
+      canCloseDay: true,    // Garsonlar için gün kapatma yetkisi açık
       canManageStock: false,
       canManageMenu: false,
       canManageUsers: false,
@@ -59,7 +61,8 @@ export const initialUsers: AppUser[] = [
       canClosePayment: false, // Garson hesap kapatamaz, sadece hesap ister
       canAddTable: false,
       canManageInvoices: false,
-      canViewReports: false,
+      canViewReports: true, // Garsonlar için rapor alma yetkisi açık
+      canCloseDay: true,    // Garsonlar için gün kapatma yetkisi açık
       canManageStock: false,
       canManageMenu: false,
       canManageUsers: false,
@@ -81,6 +84,7 @@ export const initialUsers: AppUser[] = [
       canAddTable: false,
       canManageInvoices: false,
       canViewReports: false,
+      canCloseDay: false,
       canManageStock: true,
       canManageMenu: false,
       canManageUsers: false,
@@ -377,6 +381,9 @@ export const defaultSettings: RestaurantSettings = {
   receiptHeaderNote: 'Meriç Belediyesi Sosyal Tesisleri — Hoş Geldiniz',
   receiptFooterNote: 'Meriç Belediyesi Tesisleri — Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz',
   currencySymbol: '₺',
+  serverPort: 3000,
+  remoteWanUrl: 'adisyonkasa.ddns.net',
+  remoteWanPort: 3000,
   printers: [
     {
       id: 'prn-1',

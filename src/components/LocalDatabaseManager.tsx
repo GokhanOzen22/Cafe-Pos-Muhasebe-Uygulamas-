@@ -20,7 +20,10 @@ import {
   Laptop,
   Smartphone,
   ChefHat,
-  RotateCcw
+  RotateCcw,
+  Globe,
+  ExternalLink,
+  QrCode
 } from 'lucide-react';
 import { formatDate, formatTime } from '../utils/formatters';
 
@@ -172,7 +175,7 @@ export const LocalDatabaseManager: React.FC<LocalDatabaseManagerProps> = ({ onRe
         </div>
 
         {/* Server Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mt-6">
           <div className="bg-stone-950/80 p-4 rounded-xl border border-stone-800">
             <div className="flex items-center justify-between text-stone-400 text-xs mb-1">
               <span>Sunucu Durumu</span>
@@ -182,12 +185,12 @@ export const LocalDatabaseManager: React.FC<LocalDatabaseManagerProps> = ({ onRe
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-base font-bold text-emerald-400">AKTİF & YEREL</span>
             </div>
-            <p className="text-[11px] text-stone-500 mt-1">Sadece yerel Wi-Fi ağında çalışır</p>
+            <p className="text-[11px] text-stone-500 mt-1">İşletme içi ve dış ağa hazır</p>
           </div>
 
           <div className="bg-stone-950/80 p-4 rounded-xl border border-stone-800">
             <div className="flex items-center justify-between text-stone-400 text-xs mb-1">
-              <span>Yerel Ağ IP Adresi (Wi-Fi)</span>
+              <span>Yerel Ağ IP (Wi-Fi)</span>
               <Laptop className="w-4 h-4 text-amber-400" />
             </div>
             <div className="flex items-center justify-between gap-2 mt-2">
@@ -202,29 +205,50 @@ export const LocalDatabaseManager: React.FC<LocalDatabaseManagerProps> = ({ onRe
                 {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
             </div>
-            <p className="text-[11px] text-stone-500 mt-1">Tabletlerin bağlanacağı IP adresi</p>
+            <p className="text-[11px] text-stone-500 mt-1">İçerideki tabletler & mutfak</p>
+          </div>
+
+          <div className="bg-stone-950/80 p-4 rounded-xl border border-amber-500/40 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/10 rounded-full blur-xl pointer-events-none"></div>
+            <div className="flex items-center justify-between text-amber-400 text-xs mb-1 font-bold">
+              <span>Dış Ağ (NoIP DNS)</span>
+              <Globe className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <span className="text-sm font-mono font-bold text-emerald-400 truncate" title="http://adisyonkasa.ddns.net:3000">
+                adisyonkasa.ddns.net:3000
+              </span>
+              <button
+                onClick={() => handleCopyUrl('http://adisyonkasa.ddns.net:3000')}
+                className="p-1 text-stone-400 hover:text-amber-400 bg-stone-800 rounded transition-colors"
+                title="Dış Ağ URL'sini Kopyala"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[11px] text-stone-400 mt-1">Dışarıdan ve telefondan erişim</p>
           </div>
 
           <div className="bg-stone-950/80 p-4 rounded-xl border border-stone-800">
             <div className="flex items-center justify-between text-stone-400 text-xs mb-1">
-              <span>Yerel SQLite Disk Konumu</span>
+              <span>Yerel SQLite Diski</span>
               <HardDrive className="w-4 h-4 text-blue-400" />
             </div>
             <div className="text-xs font-mono text-stone-200 mt-2 truncate" title={serverInfo?.dbPath || 'data/database.sqlite'}>
               {serverInfo?.dbPath || 'data/database.sqlite'}
             </div>
-            <p className="text-[11px] text-stone-500 mt-1">Gerçek SQLite veritabanı dosyası</p>
+            <p className="text-[11px] text-stone-500 mt-1">Gerçek SQLite veritabanı</p>
           </div>
 
           <div className="bg-stone-950/80 p-4 rounded-xl border border-stone-800">
             <div className="flex items-center justify-between text-stone-400 text-xs mb-1">
-              <span>Toplam İşlem Logu</span>
+              <span>İşlem Logları</span>
               <FileText className="w-4 h-4 text-purple-400" />
             </div>
             <div className="text-lg font-bold text-purple-300 mt-1">
-              {serverInfo?.totalLogs || logs.length} Kayıtlı Log
+              {serverInfo?.totalLogs || logs.length} Kayıt
             </div>
-            <p className="text-[11px] text-stone-500 mt-1">Anlık kayıt tutulmaktadır</p>
+            <p className="text-[11px] text-stone-500 mt-1">Anlık log tutulmaktadır</p>
           </div>
         </div>
       </div>
@@ -335,6 +359,104 @@ export const LocalDatabaseManager: React.FC<LocalDatabaseManagerProps> = ({ onRe
             </div>
             <p className="text-xs text-stone-400 leading-relaxed">
               Garson tabletinden alınan sipariş saniyeler içinde mutfak ekranına ve kasadaki bilgisayarın SQLite veritabanına otomatik kaydolur.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* NoIP DDNS Remote Internet Access Guide */}
+      <div className="bg-stone-900 border border-amber-500/30 rounded-2xl p-5 text-stone-100 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-stone-950 font-bold flex items-center justify-center shrink-0 shadow-md">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-bold text-stone-100">
+                  No-IP Ücretsiz DNS (adisyonkasa.ddns.net) ile Dışarıdan / Uzaktan Bağlantı
+                </h3>
+                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                  DNS Aktif
+                </span>
+              </div>
+              <p className="text-xs text-stone-400 mt-0.5">
+                İşletme dışından, evden veya cep telefonundan kasanın adisyonlarına, raporlarına ve canlı masalarına bağlanın.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleCopyUrl('http://adisyonkasa.ddns.net:3000')}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-stone-950 shadow-sm transition-all cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Dış Adresi Kopyala</span>
+            </button>
+            <a
+              href="http://adisyonkasa.ddns.net:3000"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700 transition-all cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>Test Et</span>
+            </a>
+          </div>
+        </div>
+
+        {/* Remote Info Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+          <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-stone-950/70 p-4 rounded-xl border border-stone-800/80 space-y-2">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                <span className="w-5 h-5 rounded-full bg-amber-500 text-stone-950 text-[11px] flex items-center justify-center shrink-0">1</span>
+                <span>1. Modem Port Yönlendirme</span>
+              </div>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Modem arayüzünden (192.168.1.1) <strong>Port Yönlendirme (NAT)</strong> sekmesinden <strong>3000</strong> portunu kasanın yerel IP'sine (<code className="text-amber-400 font-mono">{serverInfo?.localIp || '192.168.1.xxx'}</code>) yönlendirin.
+              </p>
+            </div>
+
+            <div className="bg-stone-950/70 p-4 rounded-xl border border-stone-800/80 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <span className="w-5 h-5 rounded-full bg-emerald-500 text-stone-950 text-[11px] flex items-center justify-center shrink-0">2</span>
+                <span>2. No-IP DUC / Dinamik DNS</span>
+              </div>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Kasada çalışan No-IP DUC veya modem DDNS ayarına <strong>adisyonkasa.ddns.net</strong> yazın. Sabit IP olmasa bile IP adresiniz değiştikçe No-IP anında güncellenir.
+              </p>
+            </div>
+
+            <div className="bg-stone-950/70 p-4 rounded-xl border border-stone-800/80 space-y-2">
+              <div className="flex items-center gap-2 text-blue-400 font-bold text-xs">
+                <span className="w-5 h-5 rounded-full bg-blue-500 text-stone-950 text-[11px] flex items-center justify-center shrink-0">3</span>
+                <span>3. Mobil 4G/5G'den Erişim</span>
+              </div>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                Herhangi bir yerden <code className="text-amber-400 font-mono font-bold">http://adisyonkasa.ddns.net:3000</code> yazarak veya QR kodu okutarak bağlanabilirsiniz.
+              </p>
+            </div>
+          </div>
+
+          {/* QR Code Column */}
+          <div className="md:col-span-4 bg-stone-950/80 p-4 rounded-xl border border-stone-800 flex flex-col items-center justify-center text-center space-y-2">
+            <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+              <QrCode className="w-4 h-4 text-amber-400" />
+              Cepten Hızlı Erişim QR Kodu
+            </span>
+            <div className="p-2 bg-white rounded-xl shadow-xs">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent('http://adisyonkasa.ddns.net:3000')}`}
+                alt="adisyonkasa.ddns.net QR Kodu"
+                className="w-28 h-28 object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <p className="text-[10px] text-stone-400 max-w-[200px]">
+              Telefon kamerasıyla okutarak dış ağdan (4G/5G) canlı adisyonlara bağlanın.
             </p>
           </div>
         </div>

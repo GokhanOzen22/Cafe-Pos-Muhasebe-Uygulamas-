@@ -278,6 +278,8 @@ export interface ServerInfo {
   localIp: string;
   port: number;
   localUrl: string;
+  wanDomain?: string;
+  wanUrl?: string;
   dbPath: string;
   jsonPath: string;
   totalLogs: number;

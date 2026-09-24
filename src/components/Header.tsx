@@ -88,7 +88,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   const canAccessAdmin = currentUser
     ? currentUser.role === 'admin' ||
+      currentUser.isSystemAdmin ||
       currentUser.permissions.canViewReports ||
+      !!currentUser.permissions.canCloseDay ||
       currentUser.permissions.canManageMenu ||
       currentUser.permissions.canManageStock ||
       currentUser.permissions.canManageUsers ||

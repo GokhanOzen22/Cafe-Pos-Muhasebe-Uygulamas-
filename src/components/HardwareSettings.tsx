@@ -32,9 +32,11 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
   const [serverIp, setServerIp] = useState<string>(settings.serverIp || defaultHost);
   const [serverPort, setServerPort] = useState<string>(settings.serverPort ? String(settings.serverPort) : defaultPort);
   
-  // Remote WAN / Outer Network Access State
-  const [remoteWanUrl, setRemoteWanUrl] = useState<string>(settings.remoteWanUrl || currentOrigin);
-  const [remoteWanPort, setRemoteWanPort] = useState<string>(settings.remoteWanPort ? String(settings.remoteWanPort) : '443');
+  // Remote WAN / Outer Network Access State (No-IP DDNS support for dynamic IP)
+  const defaultRemoteHost = settings.remoteWanUrl || 'adisyonkasa.ddns.net';
+  const defaultRemotePort = settings.remoteWanPort ? String(settings.remoteWanPort) : '3000';
+  const [remoteWanUrl, setRemoteWanUrl] = useState<string>(defaultRemoteHost);
+  const [remoteWanPort, setRemoteWanPort] = useState<string>(defaultRemotePort);
 
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
   const [copiedRemoteUrl, setCopiedRemoteUrl] = useState<boolean>(false);
@@ -51,7 +53,9 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
   // Computed Remote WAN Admin Access URL
   const constructedRemoteUrl = remoteWanUrl.startsWith('http://') || remoteWanUrl.startsWith('https://')
     ? remoteWanUrl
-    : `https://${remoteWanUrl}${remoteWanPort && remoteWanPort !== '443' && remoteWanPort !== '80' ? `:${remoteWanPort}` : ''}`;
+    : remoteWanUrl.includes('run.app') || remoteWanUrl.includes('vercel.app')
+    ? `https://${remoteWanUrl}`
+    : `http://${remoteWanUrl}${remoteWanPort && remoteWanPort !== '80' ? `:${remoteWanPort}` : ''}`;
 
   const handleCopyUrl = () => {
     navigator.clipboard.writeText(constructedUrl);
@@ -642,18 +646,40 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-stone-700 dark:text-stone-300 mb-1">
-                    Dış Ağ Web / Statik IP / Domain Adresi
+                    Dış Ağ Web / No-IP DDNS / Domain Adresi
                   </label>
                   <input
                     type="text"
                     value={remoteWanUrl}
                     onChange={(e) => setRemoteWanUrl(e.target.value)}
-                    placeholder="https://pos.restoraniniz.com"
+                    placeholder="adisyonkasa.ddns.net"
                     className="w-full p-2.5 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl text-xs font-mono text-stone-900 dark:text-stone-100"
                   />
-                  <span className="text-[10px] text-stone-400 mt-1 block">
-                    Cloud Run adresi, Statik IP veya özel alan adınız (Domain)
-                  </span>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <span className="text-[10px] text-stone-400">Hızlı Seçim:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRemoteWanUrl('adisyonkasa.ddns.net');
+                        setRemoteWanPort('3000');
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30 transition-all border border-amber-500/40"
+                    >
+                      ⚡ No-IP: adisyonkasa.ddns.net:3000
+                    </button>
+                    {currentOrigin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRemoteWanUrl(currentOrigin);
+                          setRemoteWanPort('443');
+                        }}
+                        className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:text-stone-900 transition-all"
+                      >
+                        🌐 Canlı Web Adresi
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -664,11 +690,11 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
                     type="text"
                     value={remoteWanPort}
                     onChange={(e) => setRemoteWanPort(e.target.value)}
-                    placeholder="443"
+                    placeholder="3000"
                     className="w-full p-2.5 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl text-xs font-mono text-stone-900 dark:text-stone-100"
                   />
                   <span className="text-[10px] text-stone-400 mt-1 block">
-                    HTTPS varsayılan: 443
+                    Kasa varsayılan: 3000
                   </span>
                 </div>
               </div>
@@ -741,41 +767,41 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
           </div>
         </div>
 
-        {/* 3 WAYS TO ACCESS REMOTELY */}
+        {/* NO-IP DDNS SETUP GUIDE */}
         <div className="p-5 bg-stone-100 dark:bg-stone-950/80 rounded-2xl border border-stone-200 dark:border-stone-800 space-y-3">
           <h4 className="text-xs font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider flex items-center gap-2">
             <Globe className="w-4 h-4 text-amber-500" />
-            Wi-Fi Dışından (Uzaktan) Erişim Sağlama Yöntemleri
+            Sabit IP Olmadan No-IP DDNS (adisyonkasa.ddns.net) ile Dışarıdan Bağlantı Rehberi
           </h4>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
             <div className="p-4 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 space-y-1.5">
-              <div className="flex items-center gap-2 text-amber-500 font-extrabold">
-                <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">1</span>
-                <span>Canlı Bulut Adresi (Önerilen)</span>
+              <div className="flex items-center gap-2 text-emerald-500 font-extrabold">
+                <span className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px]">1</span>
+                <span>Sabit IP Gerekmez (No-IP DUC)</span>
               </div>
               <p className="text-stone-600 dark:text-stone-400 text-[11px] leading-relaxed">
-                Uygulama canlı web sunucusunda (Cloud Run) çalıştığı için yukarıda otomatik oluşan HTTPS web adresi ile ek hiçbir modem ayarı gerekmeden doğrudan 4G/5G'den bağlanabilirsiniz.
+                İşletmenizde sabit IP olmasa bile, kasanızdaki No-IP DUC programı veya modeminizin DDNS ayarı sayesınde internet IP adresiniz her değiştiğinde <strong className="text-stone-800 dark:text-stone-200">adisyonkasa.ddns.net</strong> otomatik güncellenir.
               </p>
             </div>
 
             <div className="p-4 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 space-y-1.5">
               <div className="flex items-center gap-2 text-amber-500 font-extrabold">
                 <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">2</span>
-                <span>Statik IP + Port Yönlendirme</span>
+                <span>Modem Port Yönlendirme (Port 3000)</span>
               </div>
               <p className="text-stone-600 dark:text-stone-400 text-[11px] leading-relaxed">
-                Yerel bilgisayarda çalıştırıyorsanız, İnternet servis sağlayıcınızdan Statik IP alıp modem arayüzünden 3000 portunu ana bilgisayara yönlendirerek (Port Forwarding) dışarıdan erişebilirsiniz.
+                İşletme modeminizin arayüzünde (192.168.1.1) NAT / Port Yönlendirme sekmesinden <strong className="text-amber-500">3000</strong> TCP portunu kasa bilgisayarının yerel IP adresine (örn: <code className="font-mono text-stone-800 dark:text-stone-200">{serverIp}</code>) yönlendirin.
               </p>
             </div>
 
             <div className="p-4 bg-white dark:bg-stone-900 rounded-xl border border-stone-200 dark:border-stone-800 space-y-1.5">
-              <div className="flex items-center gap-2 text-amber-500 font-extrabold">
-                <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">3</span>
-                <span>Cloudflare Tunnel / Ngrok</span>
+              <div className="flex items-center gap-2 text-blue-500 font-extrabold">
+                <span className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center text-[10px]">3</span>
+                <span>Her Yerden Tek Tıkla Bağlantı</span>
               </div>
               <p className="text-stone-600 dark:text-stone-400 text-[11px] leading-relaxed">
-                Modem portu açmadan güvenli şifreli tünel oluşturmak için bilgisayarınıza Cloudflare Tunnel veya Ngrok kurup dış domain oluşturabilirsiniz.
+                İster evden bilgisayarla ister 4G/5G telefonunuzla tarayıcıya <strong className="font-mono text-emerald-500">http://adisyonkasa.ddns.net:3000</strong> yazarak veya yandaki QR kodu okutarak anında canlı adisyonlara erişin.
               </p>
             </div>
           </div>

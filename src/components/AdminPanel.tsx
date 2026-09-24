@@ -95,7 +95,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const canManageSettings = currentUser ? currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
   const canManageServer = currentUser ? currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
   const canAddTable = currentUser ? currentUser.permissions?.canAddTable || currentUser.role === 'admin' || currentUser.isSystemAdmin : true;
-  const canCloseDay = currentUser ? (currentUser.role === 'admin' || currentUser.isSystemAdmin || currentUser.permissions?.canCloseDay !== false || currentUser.permissions?.canViewReports) : true;
+  const canCloseDay = currentUser ? currentUser.role === 'admin' || currentUser.isSystemAdmin || !!currentUser.permissions?.canCloseDay : true;
 
   // Initial tab selection
   const defaultTab = canViewReports
@@ -1561,18 +1561,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     <div className="space-y-6">
       
       {/* Admin Panel Sub Navigation Tabs */}
-      <div className="bg-white dark:bg-stone-900 p-2.5 sm:p-3 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex items-center justify-between flex-wrap gap-2.5">
-        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-1 max-w-full text-xs font-semibold no-scrollbar">
+      <div className="bg-white dark:bg-stone-900 p-2 sm:p-2.5 rounded-2xl border border-stone-200 dark:border-stone-800 shadow-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs font-semibold flex-1 min-w-0">
           {canViewReports && (
             <button
               onClick={() => setActiveTab('reports')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'reports'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <TrendingUp className="w-4 h-4" />
+              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span>Raporlar & Z-Raporu</span>
             </button>
           )}
@@ -1580,83 +1580,88 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {canManageInvoices && (
             <button
               onClick={() => setActiveTab('invoices')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'invoices'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <Receipt className="w-4 h-4" />
-              <span>Fiş, Fatura & Giderler ({(purchaseInvoices?.length || 0) + (expenseInvoices?.length || 0)})</span>
+              <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xl:inline">Fiş, Fatura & Giderler ({(purchaseInvoices?.length || 0) + (expenseInvoices?.length || 0)})</span>
+              <span className="xl:hidden">Fiş & Gider ({(purchaseInvoices?.length || 0) + (expenseInvoices?.length || 0)})</span>
             </button>
           )}
 
           {canManageMenu && (
             <button
               onClick={() => setActiveTab('menu')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'menu'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <Utensils className="w-4 h-4" />
-              <span>Menü & Ürünler ({menuItems.length})</span>
+              <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xl:inline">Menü & Ürünler ({menuItems.length})</span>
+              <span className="xl:hidden">Menü ({menuItems.length})</span>
             </button>
           )}
 
           {canManageStock && (
             <button
               onClick={() => setActiveTab('stock')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'stock'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <Package className="w-4 h-4" />
-              <span>Stok & Hammadde ({stockItems.length})</span>
+              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xl:inline">Stok & Hammadde ({stockItems.length})</span>
+              <span className="xl:hidden">Stok ({stockItems.length})</span>
             </button>
           )}
 
           {canAddTable && (
             <button
               onClick={() => setActiveTab('tables')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'tables'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <LayoutGrid className="w-4 h-4" />
-              <span>Salon & Masalar ({zones.length} Salon, {tables.length} Masa)</span>
+              <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xl:inline">Salon & Masalar ({zones.length} Salon, {tables.length} Masa)</span>
+              <span className="xl:hidden">Masalar ({tables.length})</span>
             </button>
           )}
 
           {canManageUsers && (
             <button
               onClick={() => setActiveTab('users')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'users'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span>Kullanıcı & Yetki Yönetimi ({users.length})</span>
+              <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xl:inline">Kullanıcı & Yetki Yönetimi ({users.length})</span>
+              <span className="xl:hidden">Kullanıcılar ({users.length})</span>
             </button>
           )}
 
           {canViewReports && (
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'history'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <History className="w-4 h-4" />
+              <History className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span>Geçmiş Adisyonlar</span>
             </button>
           )}
@@ -1667,28 +1672,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 setActiveTab('settings');
                 setSettingsSubTab('general');
               }}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'settings'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <Settings className="w-4 h-4" />
-              <span>Restoran Ayarları</span>
+              <Settings className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span>Ayarlar</span>
             </button>
           )}
 
           {canManageServer && (
             <button
               onClick={() => setActiveTab('server')}
-              className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl transition-all ${
                 activeTab === 'server'
                   ? 'bg-amber-500 text-stone-950 shadow-xs font-bold'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-200'
               }`}
             >
-              <ServerIcon className="w-4 h-4 text-emerald-500" />
-              <span>Kasa Sunucusu ({orders.length} Adisyon)</span>
+              <ServerIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-500 shrink-0" />
+              <span>Kasa Sunucusu ({orders.length})</span>
             </button>
           )}
         </div>
@@ -1699,12 +1704,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <button
               type="button"
               onClick={() => setShowBusinessInfoModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-stone-950 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-xs shrink-0"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-stone-950 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-xs shrink-0"
               title="Vergi No, Adres, Telefon ve Fiş Başlığı Bilgilerini Düzenle"
             >
-              <Building2 className="w-4 h-4 text-amber-500" />
-              <span className="hidden sm:inline">İşletme Bilgileri (Vergi No, Adres, Tel)</span>
-              <span className="sm:hidden">İşletme Bilgileri</span>
+              <Building2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 shrink-0" />
+              <span>İşletme Bilgileri (Vergi, Adres, Tel)</span>
             </button>
           </div>
         )}
@@ -3363,80 +3367,85 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     .map((ord) => {
                       const totalItemCount = ord.items.reduce((s, i) => s + i.quantity, 0);
                       return (
-                        <tr key={ord.id} className="hover:bg-stone-50/70 dark:hover:bg-stone-800/40 transition-colors">
-                          <td className="p-3.5 font-mono font-bold text-amber-600 dark:text-amber-400">
-                            {ord.id}
+                        <tr
+                          key={ord.id}
+                          onClick={() => setViewingOrder(ord)}
+                          className="hover:bg-amber-500/10 dark:hover:bg-stone-850 transition-colors cursor-pointer group"
+                        >
+                          <td className="p-3.5 font-mono font-black text-amber-600 dark:text-amber-400 text-xs sm:text-sm">
+                            #{ord.id}
                           </td>
                           <td className="p-3.5">
-                            <div className="font-extrabold text-stone-900 dark:text-stone-100">{ord.tableName}</div>
-                            <div className="text-[10px] text-stone-400">{ord.zoneName}</div>
+                            <div className="font-extrabold text-stone-900 dark:text-stone-100 text-xs sm:text-sm">{ord.tableName}</div>
+                            <div className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">{ord.zoneName}</div>
                           </td>
-                          <td className="p-3.5 font-medium text-stone-700 dark:text-stone-300">
-                            {ord.waiterName}
+                          <td className="p-3.5 font-bold text-stone-800 dark:text-stone-200">
+                            {ord.waiterName || 'Kasa'}
                           </td>
-                          <td className="p-3.5 text-center text-stone-500 font-medium">
-                            <div>{formatTime(ord.closedAt || ord.createdAt)}</div>
-                            <div className="text-[10px] text-stone-400">{formatDate(ord.closedAt || ord.createdAt)}</div>
+                          <td className="p-3.5 text-center text-stone-600 dark:text-stone-300 font-semibold">
+                            <div className="font-bold text-stone-900 dark:text-stone-100">{formatTime(ord.closedAt || ord.createdAt)}</div>
+                            <div className="text-[11px] text-stone-500">{formatDate(ord.closedAt || ord.createdAt)}</div>
                           </td>
                           <td className="p-3.5 text-center">
-                            <span className="px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 font-semibold text-stone-600 dark:text-stone-300 text-[11px]">
+                            <span className="px-2.5 py-1 rounded-lg bg-stone-100 dark:bg-stone-800 font-bold text-stone-700 dark:text-stone-200 text-xs">
                               {totalItemCount} Kalem
                             </span>
                           </td>
                           <td className="p-3.5 text-center">
                             {ord.status === 'closed' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Ödendi (Kapalı)</span>
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                <span>Ödendi</span>
                               </span>
                             ) : ord.status === 'unpaid_debt' ? (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60">
-                                <AlertTriangle className="w-3 h-3" />
-                                <span>Ödemeden Gitti (Borç)</span>
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                <span>Borç / Veresiye</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
-                                <Clock className="w-3 h-3" />
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                 <span>Açık Masa</span>
                               </span>
                             )}
                           </td>
                           <td className="p-3.5 text-center">
                             {ord.paymentType === 'nakit' ? (
-                              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-2 py-0.5 rounded text-[10px] border border-emerald-200">Nakit</span>
+                              <span className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold px-2.5 py-1 rounded-lg text-xs border border-emerald-300 dark:border-emerald-800">Nakit</span>
                             ) : ord.paymentType === 'kredi_karti' ? (
-                              <span className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold px-2 py-0.5 rounded text-[10px] border border-amber-200">POS / Kredi Kartı</span>
+                              <span className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-bold px-2.5 py-1 rounded-lg text-xs border border-amber-300 dark:border-amber-800">Kredi Kartı / POS</span>
                             ) : ord.paymentType === 'havale' ? (
-                              <span className="bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 font-bold px-2 py-0.5 rounded text-[10px] border border-sky-200">Havale / EFT</span>
+                              <span className="bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 font-bold px-2.5 py-1 rounded-lg text-xs border border-sky-300 dark:border-sky-800">Havale / EFT</span>
                             ) : (
-                              <span className="text-stone-500 font-semibold">{ord.paymentType || '-'}</span>
+                              <span className="text-stone-500 font-bold">{ord.paymentType || '-'}</span>
                             )}
                           </td>
-                          <td className="p-3.5 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm">
+                          <td className="p-3.5 text-right font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base whitespace-nowrap">
                             {formatCurrency(ord.totalAmount, settings.currencySymbol)}
                           </td>
-                          <td className="p-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1">
+                          <td className="p-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setViewingOrder(ord)}
-                                className="p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
+                                className="px-2.5 py-1.5 bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold border border-sky-200 dark:border-sky-800"
                                 title="Adisyon Detaylarını İncele"
                               >
-                                <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>İncele</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => onOpenPrintTicket(ord)}
-                                className="p-1.5 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg transition-colors cursor-pointer"
-                                title="Yeniden Yazdır"
+                                className="p-2 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl transition-colors cursor-pointer"
+                                title="Yeniden Fiş Yazdır"
                               >
                                 <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteOrder(ord)}
-                                className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                className="p-2 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
                                 title="Adisyonu Sil"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -7190,101 +7199,125 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {/* Viewing Order Detail Modal (for Geçmiş Adisyonlar) */}
       {viewingOrder && (
-        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-stone-900 max-w-lg w-full rounded-3xl p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-stone-200 dark:border-stone-800 pb-3">
-              <div>
-                <h3 className="font-black text-base text-stone-900 dark:text-stone-100 flex items-center gap-2">
-                  <span>Adisyon #{viewingOrder.id}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+        <div className="fixed inset-0 z-50 bg-stone-950/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-stone-900 max-w-xl w-full rounded-3xl p-5 sm:p-6 border border-stone-200 dark:border-stone-800 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 my-6">
+            <div className="flex items-start justify-between border-b border-stone-200 dark:border-stone-800 pb-3.5">
+              <div className="space-y-1">
+                <div className="flex items-center flex-wrap gap-2">
+                  <h3 className="font-black text-lg sm:text-xl text-stone-900 dark:text-stone-100 flex items-center gap-2">
+                    <History className="w-5 h-5 text-amber-500" />
+                    <span>Adisyon Detayı</span>
+                    <span className="font-mono text-amber-600 dark:text-amber-400">#{viewingOrder.id}</span>
+                  </h3>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
                     viewingOrder.status === 'closed'
-                      ? 'bg-emerald-500/10 text-emerald-500'
+                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
                       : viewingOrder.status === 'unpaid_debt'
-                      ? 'bg-rose-500/10 text-rose-500'
-                      : 'bg-amber-500/10 text-amber-500'
+                      ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
                   }`}>
-                    {viewingOrder.status === 'closed' ? 'Ödendi & Kapandı' : viewingOrder.status === 'unpaid_debt' ? 'Borç / Veresiye' : 'Açık'}
+                    {viewingOrder.status === 'closed' ? '✓ Ödendi & Kapandı' : viewingOrder.status === 'unpaid_debt' ? '⚠️ Borç / Veresiye' : 'Açık Masa'}
                   </span>
-                </h3>
-                <p className="text-xs text-stone-500 mt-0.5 font-medium">
-                  {viewingOrder.tableName} ({viewingOrder.zoneName}) • Garson: {viewingOrder.waiterName}
-                </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-600 dark:text-stone-300">
+                  <span className="bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-md text-stone-900 dark:text-stone-100 font-bold">
+                    📍 {viewingOrder.tableName} ({viewingOrder.zoneName})
+                  </span>
+                  <span>• Garson: <strong className="text-stone-900 dark:text-stone-100">{viewingOrder.waiterName || 'Kasa'}</strong></span>
+                  <span>• Tarih: <strong className="text-stone-900 dark:text-stone-100">{formatDate(viewingOrder.closedAt || viewingOrder.createdAt)} {formatTime(viewingOrder.closedAt || viewingOrder.createdAt)}</strong></span>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setViewingOrder(null)}
-                className="text-stone-400 hover:text-stone-600 text-sm font-bold p-1 rounded-lg cursor-pointer"
+                className="p-1.5 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-xl transition-colors cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs max-h-80 overflow-y-auto">
-              <table className="w-full text-left">
-                <thead className="bg-stone-50 dark:bg-stone-800 text-[10px] uppercase font-bold text-stone-500">
-                  <tr>
-                    <th className="p-2">Ürün</th>
-                    <th className="p-2 text-center">Adet</th>
-                    <th className="p-2 text-right">Birim</th>
-                    <th className="p-2 text-right">Tutar</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 dark:divide-stone-800">
-                  {viewingOrder.items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td className="p-2">
-                        <span className="font-bold text-stone-900 dark:text-stone-100">{item.name}</span>
-                        {item.note && <span className="text-[10px] text-stone-400 block italic">{item.note}</span>}
-                      </td>
-                      <td className="p-2 text-center font-bold">{item.quantity}</td>
-                      <td className="p-2 text-right text-stone-500">{formatCurrency(item.price, settings.currencySymbol)}</td>
-                      <td className="p-2 text-right font-bold text-stone-900 dark:text-stone-100">
-                        {formatCurrency(item.price * item.quantity, settings.currencySymbol)}
-                      </td>
+            {/* Items Table - Highly Readable */}
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="bg-stone-50 dark:bg-stone-850 rounded-2xl border border-stone-200 dark:border-stone-750 overflow-hidden">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 uppercase font-black text-[11px] border-b border-stone-200 dark:border-stone-700">
+                    <tr>
+                      <th className="p-3">Sipariş Edilen Ürün</th>
+                      <th className="p-3 text-center">Adet</th>
+                      <th className="p-3 text-right">Birim Fiyat</th>
+                      <th className="p-3 text-right">Toplam</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200 dark:divide-stone-700">
+                    {viewingOrder.items.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-amber-500/5 transition-colors">
+                        <td className="p-3">
+                          <span className="font-extrabold text-stone-900 dark:text-stone-100 text-xs sm:text-sm block">
+                            {item.name}
+                          </span>
+                          {item.note && (
+                            <span className="text-[11px] font-medium text-amber-700 dark:text-amber-400 block italic mt-0.5">
+                              💬 Not: {item.note}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <span className="inline-block px-2.5 py-0.5 bg-amber-500/20 text-amber-800 dark:text-amber-300 font-black rounded-lg text-xs">
+                            {item.quantity}x
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-medium text-stone-600 dark:text-stone-300 text-xs sm:text-sm">
+                          {formatCurrency(item.price, settings.currencySymbol)}
+                        </td>
+                        <td className="p-3 text-right font-black text-stone-900 dark:text-stone-100 text-xs sm:text-sm">
+                          {formatCurrency(item.price * item.quantity, settings.currencySymbol)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-              <div className="bg-stone-50 dark:bg-stone-800/60 p-3 rounded-2xl space-y-1.5 text-xs">
-                <div className="flex justify-between text-stone-500">
-                  <span>Ara Toplam:</span>
-                  <span className="font-medium">{formatCurrency(viewingOrder.subtotal, settings.currencySymbol)}</span>
+              {/* Total and Payment Summary Card */}
+              <div className="bg-stone-100 dark:bg-stone-800/90 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-2 text-xs sm:text-sm">
+                <div className="flex justify-between text-stone-600 dark:text-stone-300">
+                  <span className="font-semibold">Ara Toplam:</span>
+                  <span className="font-bold text-stone-900 dark:text-stone-100">{formatCurrency(viewingOrder.subtotal, settings.currencySymbol)}</span>
                 </div>
                 {viewingOrder.discountPercent ? (
-                  <div className="flex justify-between text-emerald-600">
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
                     <span>İndirim (%{viewingOrder.discountPercent}):</span>
                     <span>-{formatCurrency(viewingOrder.discountAmount || (viewingOrder.subtotal * viewingOrder.discountPercent) / 100, settings.currencySymbol)}</span>
                   </div>
                 ) : null}
-                <div className="flex justify-between text-sm font-black text-stone-900 dark:text-stone-100 pt-1.5 border-t border-stone-200 dark:border-stone-700">
-                  <span>Genel Toplam:</span>
-                  <span className="text-amber-600 dark:text-amber-400">{formatCurrency(viewingOrder.totalAmount, settings.currencySymbol)}</span>
+                <div className="flex justify-between text-base sm:text-lg font-black text-stone-900 dark:text-stone-100 pt-2 border-t border-stone-200 dark:border-stone-700">
+                  <span>Ödenen / Toplam Tutar:</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-extrabold">{formatCurrency(viewingOrder.totalAmount, settings.currencySymbol)}</span>
                 </div>
                 {viewingOrder.paymentType && (
-                  <div className="flex justify-between text-[11px] text-stone-400 pt-1">
-                    <span>Ödeme Şekli:</span>
-                    <span className="font-bold uppercase text-stone-700 dark:text-stone-300">{viewingOrder.paymentType}</span>
+                  <div className="flex justify-between items-center text-xs text-stone-500 pt-1.5 border-t border-stone-200/60 dark:border-stone-700/50">
+                    <span>Ödeme Yöntemi:</span>
+                    <span className="font-extrabold uppercase px-2.5 py-0.5 bg-amber-500 text-stone-950 rounded-lg text-[11px]">
+                      {viewingOrder.paymentType === 'nakit' ? 'Nakit Kasa' : viewingOrder.paymentType === 'kredi_karti' ? 'POS / Kredi Kartı' : viewingOrder.paymentType === 'havale' ? 'Banka Havale' : viewingOrder.paymentType}
+                    </span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2 border-t border-stone-200 dark:border-stone-800">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-stone-200 dark:border-stone-800">
               <button
                 type="button"
-                onClick={() => {
-                  onOpenPrintTicket(viewingOrder);
-                }}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer"
+                onClick={() => onOpenPrintTicket(viewingOrder)}
+                className="flex-1 sm:flex-initial px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
-                <span>Yeniden Fiş Yazdır</span>
+                <span>Yazıcıdan Fiş Çıkart (Termal)</span>
               </button>
               <button
                 type="button"
                 onClick={() => setViewingOrder(null)}
-                className="px-4 py-2 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold hover:bg-stone-200 cursor-pointer"
+                className="px-5 py-2.5 bg-stone-200 dark:bg-stone-800 text-stone-800 dark:text-stone-200 rounded-xl text-xs sm:text-sm font-bold hover:bg-stone-300 dark:hover:bg-stone-700 transition-colors cursor-pointer"
               >
                 Kapat
               </button>
