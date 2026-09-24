@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { UserRole, RestaurantSettings, AppUser, KitchenNotification } from '../types';
-import { Utensils, ChefHat, ShieldCheck, Clock, AlertTriangle, RefreshCw, Smartphone, LogOut, User, FilePlus, Bell, Check, ArrowRight, Volume2, Trash2, BookOpen, KeyRound } from 'lucide-react';
+import { Utensils, ChefHat, ShieldCheck, Clock, AlertTriangle, RefreshCw, Smartphone, LogOut, User, FilePlus, Bell, Check, ArrowRight, Volume2, Trash2, BookOpen, KeyRound, Lock } from 'lucide-react';
 import { formatCurrency, getElapsedTimeMinutes } from '../utils/formatters';
 import { playKitchenReadyChime } from '../utils/audioAlert';
 
@@ -21,6 +21,8 @@ interface HeaderProps {
   onOpenCriticalStockModal?: () => void;
   onOpenAddInvoiceModal?: () => void;
   onOpenUserManualModal?: () => void;
+  onOpenCloseDayModal?: () => void;
+  unsealedOrdersCount?: number;
   notifications?: KitchenNotification[];
   onMarkNotificationRead?: (id?: string, all?: boolean) => void;
   onClearNotifications?: () => void;
@@ -45,6 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCriticalStockModal,
   onOpenAddInvoiceModal,
   onOpenUserManualModal,
+  onOpenCloseDayModal,
+  unsealedOrdersCount = 0,
   notifications = [],
   onMarkNotificationRead,
   onClearNotifications,
@@ -99,6 +103,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const canManageInvoices = currentUser
     ? currentUser.role === 'admin' || currentUser.isSystemAdmin || !!currentUser.permissions?.canManageInvoices
+    : true;
+
+  const canCloseDay = currentUser
+    ? currentUser.role === 'admin' || currentUser.isSystemAdmin || currentUser.permissions?.canCloseDay !== false
     : true;
 
   return (
@@ -183,6 +191,24 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Quick Stats, Actions & User Profile */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Quick Günü Kapat Button */}
+            {canCloseDay && onOpenCloseDayModal && (
+              <button
+                type="button"
+                onClick={onOpenCloseDayModal}
+                title="Günü Kapat ve Resmi Z-Raporunu Mühürle"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+              >
+                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Günü Kapat</span>
+                {unsealedOrdersCount > 0 && (
+                  <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
+                    {unsealedOrdersCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Quick Fiş & Fatura Ekle Button */}
             {canManageInvoices && (
               <button

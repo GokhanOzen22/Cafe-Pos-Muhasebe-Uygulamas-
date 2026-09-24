@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Zone, Order, TableStatus, RestaurantSettings, AppUser } from '../types';
-import { Users, Clock, Receipt, Plus, Search, Filter, Sparkles, CheckCircle2, AlertCircle, ArrowRightLeft, User, UserX } from 'lucide-react';
+import { Users, Clock, Receipt, Plus, Search, Filter, Sparkles, CheckCircle2, AlertCircle, ArrowRightLeft, User, UserX, Lock } from 'lucide-react';
 import { formatCurrency, getElapsedTimeMinutes } from '../utils/formatters';
 
 interface TableGridProps {
@@ -10,10 +10,12 @@ interface TableGridProps {
   settings: RestaurantSettings;
   currentUser?: AppUser | null;
   unpaidDebtCount?: number;
+  unsealedOrdersCount?: number;
   onSelectTable: (table: Table) => void;
   onAddTableClick?: () => void;
   onQuickNewOrder: (table: Table) => void;
   onOpenUnpaidDebtsModal?: () => void;
+  onOpenCloseDayModal?: () => void;
 }
 
 export const TableGrid: React.FC<TableGridProps> = ({
@@ -21,16 +23,22 @@ export const TableGrid: React.FC<TableGridProps> = ({
   zones,
   orders,
   settings,
-  currentUser: _currentUser,
+  currentUser,
   unpaidDebtCount = 0,
+  unsealedOrdersCount = 0,
   onSelectTable,
   onAddTableClick: _onAddTableClick,
   onQuickNewOrder,
   onOpenUnpaidDebtsModal,
+  onOpenCloseDayModal,
 }) => {
   const [selectedZoneId, setSelectedZoneId] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<TableStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  const canCloseDay = currentUser
+    ? currentUser.role === 'admin' || currentUser.isSystemAdmin || currentUser.permissions?.canCloseDay !== false
+    : true;
 
   // Helper map for active orders by tableId
   const activeOrdersMap = new Map<string, Order>();
@@ -123,6 +131,23 @@ export const TableGrid: React.FC<TableGridProps> = ({
           </div>
 
           <div className="flex items-center gap-2 justify-end shrink-0">
+            {canCloseDay && onOpenCloseDayModal && (
+              <button
+                type="button"
+                onClick={onOpenCloseDayModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-black bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 shadow-md hover:shadow-lg transition-all cursor-pointer active:scale-95 shrink-0"
+                title="Günü Kapat ve Resmi Z-Raporunu Mühürle"
+              >
+                <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Günü Kapat</span>
+                {unsealedOrdersCount > 0 && (
+                  <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.5 rounded-full font-bold ml-0.5">
+                    {unsealedOrdersCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {onOpenUnpaidDebtsModal && (
               <button
                 onClick={onOpenUnpaidDebtsModal}

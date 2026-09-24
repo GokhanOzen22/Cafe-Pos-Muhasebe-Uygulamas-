@@ -24,7 +24,7 @@
 
 @media print {
   @page {
-    size: auto;
+    size: 80mm auto;
     margin: 0mm !important;
   }
 
@@ -55,15 +55,20 @@
   }
 
   body.printing-receipt #thermal-pos-print-slip,
-  body.printing-zreport #thermal-zreport-print-slip {
+  body.printing-zreport #thermal-zreport-print-slip,
+  #thermal-pos-print-slip,
+  #thermal-zreport-print-slip {
     display: block !important;
     visibility: visible !important;
     position: static !important;
     width: 72mm !important;
     max-width: 72mm !important;
     min-width: 72mm !important;
-    margin: 0 auto !important;
-    padding: 1mm 1mm 5mm 1mm !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding: 1.5mm 1mm 8mm 1mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     box-sizing: border-box !important;
@@ -85,6 +90,7 @@
 
   #thermal-pos-print-slip *,
   #thermal-zreport-print-slip * {
+    visibility: visible !important;
     color: #000000 !important;
     -webkit-text-fill-color: #000000 !important;
     border-color: #000000 !important;
@@ -103,8 +109,8 @@
   }
 
   /* General fallback for non-portal print areas (e.g. A4 detailed reports) */
-  body:not(.printing-receipt):not(.printing-zreport) * {
-    visibility: hidden !important;
+  body:not(.printing-receipt):not(.printing-zreport) #root > :not(.print-detailed-area):not(.print-area) {
+    visibility: hidden;
   }
 
   body:not(.printing-receipt):not(.printing-zreport) .print-area,

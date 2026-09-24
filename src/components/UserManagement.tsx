@@ -147,6 +147,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   // Modal State
   const [showModal, setShowModal] = useState<boolean>(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const nameInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-focus name input whenever modal opens
+  React.useEffect(() => {
+    if (showModal) {
+      const timer = setTimeout(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [showModal]);
 
   // Form State
   const [formName, setFormName] = useState<string>('');
@@ -781,8 +793,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
       {/* CREATE / EDIT USER MODAL */}
       {showModal && (
-        <div className="fixed inset-0 bg-stone-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 max-w-xl w-full p-6 shadow-2xl space-y-5 my-8">
+        <div
+          className="fixed inset-0 bg-stone-950/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowModal(false);
+          }}
+        >
+          <div
+            className="bg-white dark:bg-stone-900 rounded-3xl border border-stone-200 dark:border-stone-800 max-w-xl w-full p-6 shadow-2xl space-y-5 my-8 relative z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-4 border-b border-stone-100 dark:border-stone-800">
               <div className="flex items-center gap-3">
@@ -800,8 +820,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowModal(false)}
-                className="p-2 text-stone-400 hover:text-stone-200 hover:bg-stone-800 rounded-xl"
+                className="p-2 text-stone-400 hover:text-stone-200 hover:bg-stone-800 rounded-xl cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -818,41 +839,63 @@ export const UserManagement: React.FC<UserManagementProps> = ({
               {/* Form Inputs Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-stone-400 font-medium mb-1">
+                  <label
+                    htmlFor="user-form-name"
+                    className="block text-stone-700 dark:text-stone-300 font-semibold mb-1 cursor-pointer select-none"
+                    onClick={() => nameInputRef.current?.focus()}
+                  >
                     Ad Soyad *
                   </label>
                   <input
+                    id="user-form-name"
+                    ref={nameInputRef}
                     type="text"
                     required
+                    autoFocus
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     placeholder="Örn: Selin Yılmaz"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
-                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-medium"
+                    onClick={(e) => (e.target as HTMLInputElement).focus()}
+                    className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-medium cursor-text"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-stone-400 font-medium mb-1">
+                  <label
+                    htmlFor="user-form-username"
+                    className="block text-stone-700 dark:text-stone-300 font-semibold mb-1 cursor-pointer select-none"
+                  >
                     Kullanıcı Adı (Giriş Adı) *
                   </label>
                   <input
+                    id="user-form-username"
                     type="text"
                     required
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     placeholder="Örn: selin"
                     value={formUsername}
                     onChange={(e) => setFormUsername(e.target.value)}
-                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-mono"
+                    className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-mono cursor-text"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-stone-400 font-medium mb-1">
+                  <label
+                    htmlFor="user-form-role"
+                    className="block text-stone-700 dark:text-stone-300 font-semibold mb-1 cursor-pointer select-none"
+                  >
                     Sistem Rolü *
                   </label>
                   <select
+                    id="user-form-role"
                     value={formRole}
                     onChange={(e) => handleRoleChange(e.target.value as UserRole)}
-                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-medium"
+                    className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-stone-100 font-medium cursor-pointer"
                   >
                     <option value="pos">Garson (POS Ekranı)</option>
                     <option value="kitchen">Mutfak Şefi (Mutfak Ekranı)</option>
@@ -861,17 +904,24 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-stone-400 font-medium mb-1">
+                  <label
+                    htmlFor="user-form-pin"
+                    className="block text-stone-700 dark:text-stone-300 font-semibold mb-1 cursor-pointer select-none"
+                  >
                     4 Haneli Giriş PIN Kodu *
                   </label>
                   <input
+                    id="user-form-pin"
                     type="text"
                     maxLength={6}
                     required
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
                     placeholder="Örn: 1234"
                     value={formPinCode}
                     onChange={(e) => setFormPinCode(e.target.value)}
-                    className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-amber-400 font-mono font-bold tracking-widest"
+                    className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl focus:ring-2 focus:ring-amber-500 text-stone-900 dark:text-amber-400 font-mono font-bold tracking-widest cursor-text"
                   />
                 </div>
               </div>

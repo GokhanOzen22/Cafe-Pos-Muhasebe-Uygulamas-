@@ -4,7 +4,18 @@ import fs from 'fs';
 import os from 'os';
 import { createServer as createViteServer } from 'vite';
 import initSqlJs, { Database } from 'sql.js';
-import { initialOrders, initialPurchaseInvoices, initialExpenseInvoices } from './src/data/initialData';
+import {
+  initialZones,
+  initialTables,
+  initialCategories,
+  initialUsers,
+  defaultSettings,
+  initialMenuItems,
+  initialStockItems,
+  initialOrders,
+  initialPurchaseInvoices,
+  initialExpenseInvoices,
+} from './src/data/initialData';
 
 interface LogEntry {
   id: string;
@@ -26,230 +37,6 @@ const DATA_DIR = process.env.POS_DATA_DIR || (
 );
 const DB_FILE = path.join(DATA_DIR, 'database.sqlite');
 const JSON_FILE = path.join(DATA_DIR, 'pos_store.json');
-
-// Initial Data Fallbacks
-const initialZones = [
-  { id: 'z1', name: 'Ana Salon', description: 'Giriş katı ve ana yemek alanı' },
-  { id: 'z2', name: 'Bahçe', description: 'Açık hava ve sigara içilebilir alan' },
-  { id: 'z3', name: 'Teras', description: 'Üst kat manzaralı teras' },
-  { id: 'z4', name: 'VIP Salon', description: 'Özel davet ve toplantı odası' },
-];
-
-const initialTables = [
-  { id: 't1', number: 'Masa 1', zoneId: 'z1', capacity: 4, status: 'empty' },
-  { id: 't2', number: 'Masa 2', zoneId: 'z1', capacity: 4, status: 'empty' },
-  { id: 't3', number: 'Masa 3', zoneId: 'z1', capacity: 2, status: 'empty' },
-  { id: 't4', number: 'Masa 4', zoneId: 'z1', capacity: 6, status: 'empty' },
-  { id: 't5', number: 'Masa 5', zoneId: 'z1', capacity: 4, status: 'empty' },
-  { id: 't6', number: 'Masa 6', zoneId: 'z1', capacity: 8, status: 'empty' },
-  { id: 't7', number: 'Bahçe 1', zoneId: 'z2', capacity: 4, status: 'empty' },
-  { id: 't8', number: 'Bahçe 2', zoneId: 'z2', capacity: 4, status: 'empty' },
-  { id: 't9', number: 'Bahçe 3', zoneId: 'z2', capacity: 6, status: 'empty' },
-  { id: 't10', number: 'Bahçe 4', zoneId: 'z2', capacity: 2, status: 'empty' },
-  { id: 't11', number: 'Teras 1', zoneId: 'z3', capacity: 4, status: 'empty' },
-  { id: 't12', number: 'Teras 2', zoneId: 'z3', capacity: 4, status: 'empty' },
-  { id: 't13', number: 'Teras 3', zoneId: 'z3', capacity: 6, status: 'empty' },
-  { id: 't14', number: 'VIP 1', zoneId: 'z4', capacity: 10, status: 'empty' },
-  { id: 't15', number: 'VIP 2', zoneId: 'z4', capacity: 12, status: 'empty' },
-];
-
-const initialCategories = [
-  { id: 'c1', name: 'Ana Yemekler', iconName: 'UtensilsCrossed', color: 'bg-amber-500' },
-  { id: 'c2', name: 'Çorbalar', iconName: 'Soup', color: 'bg-orange-500' },
-  { id: 'c3', name: 'Izgara & Kebap', iconName: 'Flame', color: 'bg-red-500' },
-  { id: 'c4', name: 'Salatalar & Meze', iconName: 'Salad', color: 'bg-emerald-500' },
-  { id: 'c5', name: 'Tatlılar', iconName: 'Cake', color: 'bg-pink-500' },
-  { id: 'c6', name: 'Sıcak İçecekler', iconName: 'Coffee', color: 'bg-amber-700' },
-  { id: 'c7', name: 'Soğuk İçecekler', iconName: 'CupSoda', color: 'bg-blue-500' },
-];
-
-const initialMenuItems = [
-  {
-    id: 'm1',
-    categoryId: 'c1',
-    name: 'Meriç Köfte Porsiyon',
-    description: 'Özel baharatlı Meriç usulü ızgara köfte, pilav ve közlenmiş biber ile',
-    price: 240,
-    costPrice: 95,
-    unit: 'Porsiyon',
-    stockQuantity: 45,
-    minStockAlert: 10,
-    isAvailable: true,
-  },
-  {
-    id: 'm2',
-    categoryId: 'c1',
-    name: 'Tavuk Sote',
-    description: 'Kremalı, mantarlı ve sebzeli tavuk sote, pirinç pilavı ile',
-    price: 210,
-    costPrice: 80,
-    unit: 'Porsiyon',
-    stockQuantity: 30,
-    minStockAlert: 8,
-    isAvailable: true,
-  },
-  {
-    id: 'm3',
-    categoryId: 'c2',
-    name: 'Günün Çorbası (Mercimek)',
-    description: 'Süzme mercimek çorbası, kruton ekmek ve tereyağlı sos ile',
-    price: 75,
-    costPrice: 20,
-    unit: 'Kase',
-    stockQuantity: 60,
-    minStockAlert: 15,
-    isAvailable: true,
-  },
-  {
-    id: 'm4',
-    categoryId: 'c3',
-    name: 'Adana Kebap',
-    description: 'Zırh kıyması, lavaş, közlenmiş domates ve biber ile',
-    price: 280,
-    costPrice: 110,
-    unit: 'Porsiyon',
-    stockQuantity: 25,
-    minStockAlert: 5,
-    isAvailable: true,
-  },
-  {
-    id: 'm5',
-    categoryId: 'c6',
-    name: 'Taze Demleme Çay',
-    description: 'Rize çayı, geleneksel ince belli bardakta',
-    price: 20,
-    costPrice: 3,
-    unit: 'Bardak',
-    stockQuantity: 300,
-    minStockAlert: 50,
-    isAvailable: true,
-  },
-  {
-    id: 'm6',
-    categoryId: 'c6',
-    name: 'Türk Kahvesi',
-    description: 'Köpüklü Türk kahvesi, çikolata ve su ile',
-    price: 55,
-    costPrice: 10,
-    unit: 'Fincan',
-    stockQuantity: 120,
-    minStockAlert: 20,
-    isAvailable: true,
-  },
-  {
-    id: 'm7',
-    categoryId: 'c7',
-    name: 'Ev Yapımı Ayran',
-    description: 'Yayık ayranı, naneli',
-    price: 35,
-    costPrice: 8,
-    unit: 'Bardak',
-    stockQuantity: 80,
-    minStockAlert: 15,
-    isAvailable: true,
-  },
-  {
-    id: 'm8',
-    categoryId: 'c5',
-    name: 'Fırın Sütlaç',
-    description: 'Geleneksel fırınlanmış sütlaç, fındık parçaları ile',
-    price: 90,
-    costPrice: 25,
-    unit: 'Porsiyon',
-    stockQuantity: 20,
-    minStockAlert: 5,
-    isAvailable: true,
-  },
-];
-
-const initialStockItems = [
-  { id: 's1', name: 'Dana Kıyma (Köftelik)', category: 'Et & Şarküteri', quantity: 24.5, unit: 'kg', minThreshold: 5, costPerUnit: 380, lastUpdated: new Date().toISOString() },
-  { id: 's2', name: 'Tavuk Göğsü', category: 'Et & Şarküteri', quantity: 18, unit: 'kg', minThreshold: 4, costPerUnit: 160, lastUpdated: new Date().toISOString() },
-  { id: 's3', name: 'Rize Çayı (Kuru)', category: 'Kuru Gıda', quantity: 12, unit: 'kg', minThreshold: 3, costPerUnit: 180, lastUpdated: new Date().toISOString() },
-  { id: 's4', name: 'Süt (Tam Yağlı)', category: 'Süt Ürünleri', quantity: 45, unit: 'lt', minThreshold: 10, costPerUnit: 32, lastUpdated: new Date().toISOString() },
-  { id: 's5', name: 'Pirinç (Baldo)', category: 'Kuru Gıda', quantity: 35, unit: 'kg', minThreshold: 8, costPerUnit: 75, lastUpdated: new Date().toISOString() },
-];
-
-const defaultSettings = {
-  name: 'Meriç Belediyesi Sosyal Tesisleri',
-  logoUrl: '/logo.svg',
-  address: 'Meriç Sosyal Tesisleri, Edirne',
-  phone: '0 (284) 513 10 10',
-  taxNumber: '6180054321',
-  taxRatePercent: 10,
-  receiptHeaderNote: 'Meriç Belediyesi Sosyal Tesislerine Hoş Geldiniz',
-  receiptFooterNote: 'Afiyet olsun, yine bekleriz!',
-  currencySymbol: '₺',
-  serverIp: '192.168.1.100',
-  serverPort: 3000,
-};
-
-const initialUsers = [
-  {
-    id: 'u1',
-    name: 'Ahmet Yılmaz',
-    username: 'admin',
-    role: 'admin' as const,
-    pinCode: '1234',
-    isSystemAdmin: true,
-    createdAt: new Date().toISOString(),
-    permissions: {
-      canTakeOrder: true,
-      canApplyDiscount: true,
-      canCancelItem: true,
-      canTransferTable: true,
-      canClosePayment: true,
-      canAddTable: true,
-      canManageInvoices: true,
-      canViewReports: true,
-      canManageStock: true,
-      canManageMenu: true,
-      canManageUsers: true,
-    },
-  },
-  {
-    id: 'u2',
-    name: 'Mehmet Demir',
-    username: 'garson1',
-    role: 'pos' as const,
-    pinCode: '0000',
-    createdAt: new Date().toISOString(),
-    permissions: {
-      canTakeOrder: true,
-      canApplyDiscount: false,
-      canCancelItem: false,
-      canTransferTable: true,
-      canClosePayment: false,
-      canAddTable: false,
-      canManageInvoices: false,
-      canViewReports: false,
-      canManageStock: false,
-      canManageMenu: false,
-      canManageUsers: false,
-    },
-  },
-  {
-    id: 'u3',
-    name: 'Mutfak Ekibi',
-    username: 'mutfak',
-    role: 'kitchen' as const,
-    pinCode: '5555',
-    createdAt: new Date().toISOString(),
-    permissions: {
-      canTakeOrder: false,
-      canApplyDiscount: false,
-      canCancelItem: false,
-      canTransferTable: false,
-      canClosePayment: false,
-      canAddTable: false,
-      canManageInvoices: false,
-      canViewReports: false,
-      canManageStock: true,
-      canManageMenu: false,
-      canManageUsers: false,
-    },
-  },
-];
 
 // Helper to get local network IP address
 function getLocalNetworkIp(): string {
@@ -493,19 +280,7 @@ async function startServer() {
     const stockItems = getKV('stock_items', initialStockItems);
     const purchaseInvoices = getKV('purchase_invoices', initialPurchaseInvoices);
     const expenseInvoices = getKV('expense_invoices', initialExpenseInvoices);
-    let orders = getKV<any[]>('orders', initialOrders);
-    if (!orders || orders.length === 0) {
-      orders = initialOrders;
-      setKV('orders', orders);
-    } else {
-      // Ensure closed order history is present if none exists
-      const hasClosed = orders.some((o: any) => o.status === 'closed');
-      if (!hasClosed) {
-        const closedInitial = initialOrders.filter((o: any) => o.status === 'closed');
-        orders = [...orders, ...closedInitial];
-        setKV('orders', orders);
-      }
-    }
+    const orders = getKV<any[]>('orders', initialOrders);
     const settings = getKV('settings', defaultSettings);
     const users = getKV('users', initialUsers);
     const notifications = getKV('kitchen_notifications', []);
@@ -649,7 +424,7 @@ async function startServer() {
 
   app.post('/api/reset-data', (req, res) => {
     setKV('zones', initialZones);
-    setKV('tables', initialTables);
+    setKV('tables', initialTables.map(t => ({ ...t, status: 'empty', currentOrderId: undefined, openedAt: undefined, customerName: undefined, reservedTime: undefined })));
     setKV('categories', initialCategories);
     setKV('menu_items', initialMenuItems);
     setKV('stock_items', initialStockItems);
@@ -665,8 +440,8 @@ async function startServer() {
       userId: req.body.userId || 'admin',
       userName: req.body.userName || 'Yönetici',
       userRole: 'admin',
-      action: 'Sistem Sıfırlandı',
-      details: 'Tüm adisyon, masa ve stok verileri varsayılan fabrika ayarlarına sıfırlandı.',
+      action: 'Temiz Kuruluma Sıfırlandı',
+      details: 'Masalar ve örnek kullanıcılar korunarak; adisyonlar, alım-gider faturaları, ürünler ve stoklar sıfırlandı.',
       category: 'system',
       ipAddress: req.ip,
     });

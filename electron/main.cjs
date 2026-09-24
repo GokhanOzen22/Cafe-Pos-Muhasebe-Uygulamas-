@@ -206,26 +206,99 @@ function createWindow() {
 
 // Setup IPC handlers for silent direct printing
 ipcMain.handle('print-direct', async (event, options = {}) => {
-  if (!mainWindow) return { success: false, error: 'Ana pencere bulunamadı.' };
+  return new Promise(async (resolve) => {
+    try {
+      let targetDevice = options.deviceName || '';
 
-  return new Promise((resolve) => {
-    const printOptions = {
-      silent: true, // PENCERE VE YAZICI SEÇİM DİYALOĞU AÇILMADAN DİREKT YAZDIR
-      printBackground: true,
-      deviceName: options.deviceName || '', // Boş ise sistem varsayılanını (POS-80C) kullanır
-      color: false,
-      margins: { marginType: 'none' },
-      copies: options.copies || 1,
-    };
-
-    mainWindow.webContents.print(printOptions, (success, failureReason) => {
-      if (!success) {
-        console.warn('⚠️ Doğrudan yazdırma uyarısı:', failureReason);
-      } else {
-        console.log('✅ Fiş başarıyla doğrudan yazıcıya iletildi.');
+      // Validate target device against installed printers to avoid invalid device errors
+      if (mainWindow) {
+        try {
+          const printers = await mainWindow.webContents.getPrintersAsync();
+          if (targetDevice) {
+            const match = printers.find(
+              (p) =>
+                p.name.toLowerCase() === targetDevice.toLowerCase() ||
+                (p.displayName && p.displayName.toLowerCase() === targetDevice.toLowerCase())
+            );
+            if (!match) {
+              const defaultPrn = printers.find((p) => p.isDefault);
+              console.log(`⚠️ Belirtilen yazıcı (${targetDevice}) bulunamadı. Varsayılan (${defaultPrn?.name || 'Sistem'}) kullanılacak.`);
+              targetDevice = defaultPrn ? defaultPrn.name : '';
+            } else {
+              targetDevice = match.name;
+            }
+          } else {
+            const defaultPrn = printers.find((p) => p.isDefault);
+            if (defaultPrn) targetDevice = defaultPrn.name;
+          }
+        } catch (e) {
+          console.warn('Yazıcılar kontrol edilemedi:', e);
+        }
       }
-      resolve({ success, failureReason });
-    });
+
+      const printOptions = {
+        silent: true, // PENCERE VE YAZICI SEÇİM DİYALOĞU AÇILMADAN DİREKT YAZDIR
+        printBackground: true,
+        deviceName: targetDevice,
+        color: false,
+        margins: { marginType: 'none' },
+        copies: options.copies || 1,
+      };
+
+      // If isolated raw HTML is supplied, render in a dedicated hidden window (100% immune to UI race conditions)
+      if (options.html) {
+        const printWindow = new BrowserWindow({
+          show: false,
+          width: 320,
+          height: 600,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+          },
+        });
+
+        printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(options.html)}`);
+
+        printWindow.webContents.on('did-finish-load', () => {
+          setTimeout(() => {
+            printWindow.webContents.print(printOptions, (success, failureReason) => {
+              try {
+                printWindow.close();
+              } catch (e) {}
+              if (!success) {
+                console.warn('⚠️ HTML doğrudan yazdırma uyarısı:', failureReason);
+              } else {
+                console.log('✅ Fiş (HTML) başarıyla doğrudan yazıcıya iletildi.');
+              }
+              resolve({ success, failureReason });
+            });
+          }, 200);
+        });
+
+        printWindow.webContents.on('did-fail-load', () => {
+          try {
+            printWindow.close();
+          } catch (e) {}
+          resolve({ success: false, failureReason: 'HTML yüklenemedi' });
+        });
+        return;
+      }
+
+      // Fallback: print active mainWindow webContents
+      if (!mainWindow) return resolve({ success: false, error: 'Ana pencere bulunamadı.' });
+
+      mainWindow.webContents.print(printOptions, (success, failureReason) => {
+        if (!success) {
+          console.warn('⚠️ Doğrudan yazdırma uyarısı:', failureReason);
+        } else {
+          console.log('✅ Fiş başarıyla doğrudan yazıcıya iletildi.');
+        }
+        resolve({ success, failureReason });
+      });
+    } catch (err) {
+      console.error('print-direct genel hata:', err);
+      resolve({ success: false, failureReason: err?.message || 'Yazdırma hatası' });
+    }
   });
 });
 

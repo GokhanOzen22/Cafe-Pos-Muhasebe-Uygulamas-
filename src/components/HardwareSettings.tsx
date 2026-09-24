@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { RestaurantSettings, PrinterDevice, BarcodeScannerConfig } from '../types';
+import { generateTestTicketHtml, executeThermalPrint } from '../utils/thermalPrinter';
 import {
   Printer, Scan, Cpu, Settings2, Plus, Trash2, Edit3, CheckCircle2,
   AlertCircle, RefreshCw, Volume2, Wifi, Usb, Cable, Check, Play,
@@ -83,6 +84,7 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
 
   // Direct (Silent) Printing States
   const [silentPrinting, setSilentPrinting] = useState<boolean>(settings.silentPrinting !== false);
+  const [autoPrintReceiptOnPayment, setAutoPrintReceiptOnPayment] = useState<boolean>(settings.autoPrintReceiptOnPayment !== false);
   const [selectedPrinterName, setSelectedPrinterName] = useState<string>(settings.selectedPrinterName || 'POS-80C');
   const [systemPrinters, setSystemPrinters] = useState<
     Array<{ name: string; displayName?: string; isDefault?: boolean }>
@@ -124,6 +126,17 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
       ...settings,
       silentPrinting: enabled,
       selectedPrinterName,
+      autoPrintReceiptOnPayment,
+    });
+  };
+
+  const handleToggleAutoPrintReceiptOnPayment = (enabled: boolean) => {
+    setAutoPrintReceiptOnPayment(enabled);
+    onUpdateSettings({
+      ...settings,
+      silentPrinting,
+      selectedPrinterName,
+      autoPrintReceiptOnPayment: enabled,
     });
   };
 
@@ -139,24 +152,12 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
   const handleSilentTestPrint = async () => {
     setSilentTestStatus('Doğrudan test fişi yazıcıya gönderiliyor (Diyalogsuz)...');
     try {
-      if (
-        typeof window !== 'undefined' &&
-        window.electronAPI &&
-        typeof window.electronAPI.printDirect === 'function'
-      ) {
-        const res = await window.electronAPI.printDirect({
-          silent: true,
-          deviceName: selectedPrinterName || 'POS-80C',
-          copies: 1,
-        });
-        if (res.success) {
-          setSilentTestStatus('✅ Test fişi yazıcı seçimi penceresi açılmadan DOĞRUDAN termal yazıcıya iletildi!');
-        } else {
-          setSilentTestStatus(`⚠️ Doğrudan yazdırma uyarısı: ${res.failureReason || 'Yazıcı hazır olmayabilir.'}`);
-        }
+      const htmlContent = generateTestTicketHtml(settings);
+      const res = await executeThermalPrint(htmlContent, selectedPrinterName || 'POS-80C');
+      if (res.success) {
+        setSilentTestStatus('✅ Test fişi başarıyla termal yazıcıya iletildi!');
       } else {
-        window.print();
-        setSilentTestStatus('✅ Yazdırma komutu iletildi.');
+        setSilentTestStatus(`⚠️ Doğrudan yazdırma uyarısı: ${res.error || 'Yazıcı hazır olmayabilir.'}`);
       }
     } catch (e: any) {
       setSilentTestStatus(`❌ Hata: ${e.message || 'Yazdırılamadı'}`);
@@ -852,7 +853,7 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Toggle Card */}
+          {/* Direct Print Toggle Card */}
           <div className="p-4 bg-stone-50 dark:bg-stone-950/60 rounded-2xl border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-4">
             <div>
               <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100">
@@ -867,6 +868,28 @@ export const HardwareSettings: React.FC<HardwareSettingsProps> = ({
               onClick={() => handleToggleSilentPrinting(!silentPrinting)}
               className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
                 silentPrinting ? 'bg-emerald-500 justify-end' : 'bg-stone-300 dark:bg-stone-700 justify-start'
+              }`}
+            >
+              <div className="bg-white w-4 h-4 rounded-full shadow-md" />
+            </button>
+          </div>
+
+          {/* Auto Print on Payment Card */}
+          <div className="p-4 bg-stone-50 dark:bg-stone-950/60 rounded-2xl border border-stone-200 dark:border-stone-800 flex items-center justify-between gap-4">
+            <div>
+              <h4 className="font-bold text-sm text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                <Printer className="w-4 h-4 text-amber-500" />
+                Ödeme Onayında Otomatik Adisyon Çıktısı
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                "Ödemeyi Onayla & Kapat" dendiğinde adisyon fişini doğrudan yazıcıdan çıkartır.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleToggleAutoPrintReceiptOnPayment(!autoPrintReceiptOnPayment)}
+              className={`w-12 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${
+                autoPrintReceiptOnPayment ? 'bg-emerald-500 justify-end' : 'bg-stone-300 dark:bg-stone-700 justify-start'
               }`}
             >
               <div className="bg-white w-4 h-4 rounded-full shadow-md" />

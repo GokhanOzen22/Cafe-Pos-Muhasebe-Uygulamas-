@@ -211,6 +211,7 @@ export interface RestaurantSettings {
   barcodeScanner?: BarcodeScannerConfig;
   silentPrinting?: boolean; // Doğrudan sessiz yazdırma (yazıcı seçim diyaloğunu atlar)
   selectedPrinterName?: string; // Tercih edilen yazıcı adı (örn: POS-80C)
+  autoPrintReceiptOnPayment?: boolean; // Ödeme onayla & kapat tıklandığında otomatik adisyon çıktısı ver
 }
 
 declare global {
@@ -221,6 +222,7 @@ declare global {
         silent?: boolean;
         deviceName?: string;
         copies?: number;
+        html?: string;
       }) => Promise<{ success: boolean; failureReason?: string }>;
       getPrinters: () => Promise<
         Array<{

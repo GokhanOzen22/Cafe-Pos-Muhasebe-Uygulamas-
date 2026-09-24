@@ -1,0 +1,327 @@
+{
+  "zones": [
+    {
+      "id": "z1",
+      "name": "Ana Salon",
+      "description": "Giriş katı ve ana yemek alanı"
+    },
+    {
+      "id": "z2",
+      "name": "Bahçe",
+      "description": "Açık hava ve sigara içilebilir alan"
+    },
+    {
+      "id": "z3",
+      "name": "Teras",
+      "description": "Üst kat manzaralı teras"
+    },
+    {
+      "id": "z4",
+      "name": "VIP Salon",
+      "description": "Özel davet ve toplantı odası"
+    }
+  ],
+  "tables": [
+    {
+      "id": "t1",
+      "number": "Masa 1",
+      "zoneId": "z1",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t2",
+      "number": "Masa 2",
+      "zoneId": "z1",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t3",
+      "number": "Masa 3",
+      "zoneId": "z1",
+      "capacity": 2,
+      "status": "empty"
+    },
+    {
+      "id": "t4",
+      "number": "Masa 4",
+      "zoneId": "z1",
+      "capacity": 6,
+      "status": "empty"
+    },
+    {
+      "id": "t5",
+      "number": "Masa 5",
+      "zoneId": "z1",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t6",
+      "number": "Masa 6",
+      "zoneId": "z1",
+      "capacity": 8,
+      "status": "empty"
+    },
+    {
+      "id": "t7",
+      "number": "Bahçe 1",
+      "zoneId": "z2",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t8",
+      "number": "Bahçe 2",
+      "zoneId": "z2",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t9",
+      "number": "Bahçe 3",
+      "zoneId": "z2",
+      "capacity": 6,
+      "status": "empty"
+    },
+    {
+      "id": "t10",
+      "number": "Bahçe 4",
+      "zoneId": "z2",
+      "capacity": 2,
+      "status": "empty"
+    },
+    {
+      "id": "t11",
+      "number": "Teras 1",
+      "zoneId": "z3",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t12",
+      "number": "Teras 2",
+      "zoneId": "z3",
+      "capacity": 4,
+      "status": "empty"
+    },
+    {
+      "id": "t13",
+      "number": "Teras 3",
+      "zoneId": "z3",
+      "capacity": 6,
+      "status": "empty"
+    },
+    {
+      "id": "t14",
+      "number": "VIP 1",
+      "zoneId": "z4",
+      "capacity": 10,
+      "status": "empty"
+    },
+    {
+      "id": "t15",
+      "number": "VIP 2",
+      "zoneId": "z4",
+      "capacity": 12,
+      "status": "empty"
+    }
+  ],
+  "categories": [
+    {
+      "id": "cat-1",
+      "name": "Sıcak İçecekler",
+      "iconName": "Coffee",
+      "color": "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+    },
+    {
+      "id": "cat-2",
+      "name": "Soğuk İçecekler",
+      "iconName": "CupSoda",
+      "color": "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+    },
+    {
+      "id": "cat-3",
+      "name": "Kahvaltılıklar",
+      "iconName": "Egg",
+      "color": "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300"
+    },
+    {
+      "id": "cat-4",
+      "name": "Ana Yemekler",
+      "iconName": "UtensilsCrossed",
+      "color": "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300"
+    },
+    {
+      "id": "cat-5",
+      "name": "Burger & Atıştırmalık",
+      "iconName": "HamBurger",
+      "color": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300"
+    },
+    {
+      "id": "cat-6",
+      "name": "Tatlılar & Pastalar",
+      "iconName": "Cake",
+      "color": "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300"
+    }
+  ],
+  "menu_items": [],
+  "stock_items": [],
+  "orders": [],
+  "settings": {
+    "name": "Meriç Belediyesi Sosyal Tesisleri",
+    "logoUrl": "/logo.svg",
+    "address": "Büyük Altunhan Mah., Atatürk Caddesi No:1, Meriç / Edirne",
+    "phone": "+90 (284) 811 70 05",
+    "taxNumber": "6180054321",
+    "taxOffice": "Meriç Vergi Dairesi",
+    "taxRatePercent": 10,
+    "receiptHeaderNote": "Meriç Belediyesi Sosyal Tesisleri — Hoş Geldiniz",
+    "receiptFooterNote": "Meriç Belediyesi Tesisleri — Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz",
+    "currencySymbol": "₺",
+    "serverPort": 3000,
+    "remoteWanUrl": "adisyonkasa.ddns.net",
+    "remoteWanPort": 3000,
+    "printers": [
+      {
+        "id": "prn-1",
+        "name": "Kasa Adisyon Yazıcısı (Thermal 80mm)",
+        "type": "receipt",
+        "connectionType": "usb",
+        "usbPort": "USB001",
+        "usbDeviceName": "POS-80 Thermal USB Printer",
+        "paperWidth": "80mm",
+        "autoCut": true,
+        "isDefault": true
+      },
+      {
+        "id": "prn-2",
+        "name": "Mutfak Sipariş Yazıcısı (Network IP)",
+        "type": "kitchen",
+        "connectionType": "network",
+        "ipAddress": "192.168.1.200",
+        "port": 9100,
+        "paperWidth": "80mm",
+        "autoCut": true,
+        "isDefault": false
+      },
+      {
+        "id": "prn-3",
+        "name": "Barkod & Etiket Yazıcısı (Zebra / Xprinter)",
+        "type": "barcode",
+        "connectionType": "usb",
+        "usbPort": "USB002",
+        "usbDeviceName": "Xprinter Barcode USB",
+        "paperWidth": "etiket",
+        "autoCut": false,
+        "isDefault": false
+      }
+    ],
+    "barcodeScanner": {
+      "enabled": true,
+      "mode": "usb_hid",
+      "prefix": "",
+      "suffix": "ENTER",
+      "beepAlert": true
+    },
+    "silentPrinting": true,
+    "selectedPrinterName": "POS-80C",
+    "autoPrintReceiptOnPayment": true
+  },
+  "users": [
+    {
+      "id": "u1",
+      "name": "Ahmet Yılmaz",
+      "username": "admin",
+      "role": "admin",
+      "pinCode": "1234",
+      "isSystemAdmin": true,
+      "createdAt": "2026-09-24T14:28:37.810Z",
+      "permissions": {
+        "canTakeOrder": true,
+        "canApplyDiscount": true,
+        "canCancelItem": true,
+        "canTransferTable": true,
+        "canClosePayment": true,
+        "canAddTable": true,
+        "canManageInvoices": true,
+        "canViewReports": true,
+        "canCloseDay": true,
+        "canManageStock": true,
+        "canManageMenu": true,
+        "canManageUsers": true
+      }
+    },
+    {
+      "id": "u2",
+      "name": "Mehmet Demir (Garson)",
+      "username": "garson1",
+      "role": "pos",
+      "pinCode": "1001",
+      "createdAt": "2026-09-24T14:28:37.810Z",
+      "permissions": {
+        "canTakeOrder": true,
+        "canApplyDiscount": true,
+        "canCancelItem": false,
+        "canTransferTable": true,
+        "canClosePayment": false,
+        "canAddTable": false,
+        "canManageInvoices": false,
+        "canViewReports": true,
+        "canCloseDay": true,
+        "canManageStock": false,
+        "canManageMenu": false,
+        "canManageUsers": false
+      }
+    },
+    {
+      "id": "u3",
+      "name": "Ayşe Kaya (Garson)",
+      "username": "ayse",
+      "role": "pos",
+      "pinCode": "1002",
+      "createdAt": "2026-09-24T14:28:37.810Z",
+      "permissions": {
+        "canTakeOrder": true,
+        "canApplyDiscount": false,
+        "canCancelItem": false,
+        "canTransferTable": true,
+        "canClosePayment": false,
+        "canAddTable": false,
+        "canManageInvoices": false,
+        "canViewReports": true,
+        "canCloseDay": true,
+        "canManageStock": false,
+        "canManageMenu": false,
+        "canManageUsers": false
+      }
+    },
+    {
+      "id": "u4",
+      "name": "Mutfak Ekibi (Can Taş)",
+      "username": "mutfak",
+      "role": "kitchen",
+      "pinCode": "2001",
+      "createdAt": "2026-09-24T14:28:37.810Z",
+      "permissions": {
+        "canTakeOrder": false,
+        "canApplyDiscount": false,
+        "canCancelItem": false,
+        "canTransferTable": false,
+        "canClosePayment": false,
+        "canAddTable": false,
+        "canManageInvoices": false,
+        "canViewReports": false,
+        "canCloseDay": false,
+        "canManageStock": true,
+        "canManageMenu": false,
+        "canManageUsers": false
+      }
+    }
+  ],
+  "purchase_invoices": [],
+  "expense_invoices": [],
+  "kitchen_notifications": [],
+  "daily_zreports": []
+}

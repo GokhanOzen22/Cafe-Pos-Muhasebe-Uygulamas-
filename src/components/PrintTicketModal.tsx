@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Order, RestaurantSettings } from '../types';
 import { X, Printer, ArrowLeft, CheckCircle2, Image as ImageIcon } from 'lucide-react';
 import { formatCurrency, formatDate, formatTime } from '../utils/formatters';
+import { generateTicketHtml, executeThermalPrint } from '../utils/thermalPrinter';
 
 interface PrintTicketModalProps {
   order: Order;
@@ -13,6 +14,10 @@ interface PrintTicketModalProps {
 export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, settings, onClose }) => {
   const [showLogo, setShowLogo] = useState<boolean>(true);
   const [isPrinting, setIsPrinting] = useState<boolean>(false);
+  const [printSuccess, setPrintSuccess] = useState<boolean>(false);
+  const [selectedPaymentType, setSelectedPaymentType] = useState<string>(
+    order.paymentType || (order.status === 'closed' ? 'nakit' : 'open')
+  );
 
   // Manage print class on body
   useEffect(() => {
@@ -25,6 +30,7 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
   const handlePrint = async () => {
     if (isPrinting) return;
     setIsPrinting(true);
+    setPrintSuccess(false);
 
     const targetPrinter =
       settings.selectedPrinterName ||
@@ -33,25 +39,18 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
       '';
 
     try {
-      // 1. Electron IPC Silent Direct Print (No Windows dialog)
-      if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.printDirect === 'function') {
-        const result = await window.electronAPI.printDirect({
-          silent: true,
-          deviceName: targetPrinter,
-          copies: 1,
-        });
+      // 1. Generate clean, self-contained 72mm thermal HTML slip with accurate payment banner
+      const htmlContent = generateTicketHtml(order, settings, {
+        showLogo,
+        forcedPaymentType: selectedPaymentType,
+      });
 
-        if (result && result.success) {
-          setTimeout(() => {
-            setIsPrinting(false);
-            onClose();
-          }, 400);
-          return;
-        }
+      // 2. High-reliability thermal print (Electron direct / isolated hidden iframe)
+      const result = await executeThermalPrint(htmlContent, targetPrinter);
+
+      if (result.success) {
+        setPrintSuccess(true);
       }
-
-      // 2. Standard Chromium Kiosk Print / Browser fallback
-      window.print();
     } catch (err) {
       console.warn('Doğrudan yazdırma yürütme hatası:', err);
       try {
@@ -60,10 +59,11 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
         console.error('window.print hatası:', e);
       }
     } finally {
+      // Keep modal alive during Windows print spooling to prevent premature DOM removal
       setTimeout(() => {
         setIsPrinting(false);
         onClose();
-      }, 500);
+      }, 1000);
     }
   };
 
@@ -344,21 +344,52 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
           </div>
         </div>
 
-        {order.paymentType ? (
-          <div
-            className="text-center pt-1 text-xs font-black uppercase thermal-unbreakable-block"
-            style={{ color: '#000000', fontWeight: 900 }}
-          >
-            ÖDEME TÜRÜ: {order.paymentType}
-          </div>
-        ) : order.status === 'unpaid_debt' ? (
-          <div
-            className="text-center pt-1 text-xs font-black uppercase thermal-unbreakable-block"
-            style={{ color: '#000000', fontWeight: 900 }}
-          >
-            DURUM: ÖDENMEDİ (VERESİYE / AÇIK HESAP)
-          </div>
-        ) : null}
+        {/* User-requested Payment Confirmation Banner */}
+        {(() => {
+          let paymentText = '';
+          if (selectedPaymentType === 'kredi_karti') {
+            paymentText = 'KREDİ KARTI İLE ALINDI';
+          } else if (selectedPaymentType === 'nakit') {
+            paymentText = 'NAKİT ALINDI';
+          } else if (selectedPaymentType === 'yemek_karti') {
+            paymentText = 'YEMEK KARTI İLE ALINDI';
+          } else if (selectedPaymentType === 'parcali') {
+            paymentText = 'PARÇALI ÖDEME İLE ALINDI';
+          } else if (selectedPaymentType === 'havale') {
+            paymentText = 'HAVALE / EFT İLE ALINDI';
+          } else if (order.status === 'unpaid_debt' || selectedPaymentType === 'veresiye') {
+            paymentText = 'VERESİYE / BORÇ KAYDEDİLDİ';
+          } else if (order.status === 'closed') {
+            paymentText = 'ÖDENDİ';
+          } else {
+            paymentText = 'ÖDEME BEKLİYOR (AÇIK HESAP)';
+          }
+
+          return (
+            <div
+              className="my-2 p-1.5 rounded text-center thermal-unbreakable-block"
+              style={{
+                border: '2px solid #000000',
+                backgroundColor: '#ffffff',
+                color: '#000000',
+              }}
+            >
+              <div className="font-black text-xs uppercase tracking-wider" style={{ fontWeight: 900, color: '#000000' }}>
+                *** {paymentText} ***
+              </div>
+              {order.payments && order.payments.length > 0 && (
+                <div className="mt-1 pt-1 border-t border-dotted border-black text-[10px] font-bold space-y-0.5">
+                  {order.payments.map((p, idx) => (
+                    <div key={idx} className="flex justify-between">
+                      <span>{p.type === 'nakit' ? 'Nakit' : p.type === 'kredi_karti' ? 'Kredi Kartı' : 'Yemek Kartı'}:</span>
+                      <span>{formatCurrency(p.amount, settings.currencySymbol)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div
           className="my-1.5"
@@ -450,6 +481,46 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
                 <span>{showLogo ? 'Logo Açık' : 'Logo Kapalı'}</span>
               </button>
             </div>
+
+            {/* Quick Payment Status Selector for Printout */}
+            <div className="flex items-center justify-between pt-1 border-t border-emerald-500/20 text-[11px] text-stone-600 dark:text-stone-300 font-semibold">
+              <span>Fişteki Ödeme:</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentType('kredi_karti')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                    selectedPaymentType === 'kredi_karti'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-700'
+                  }`}
+                >
+                  Kredi Kartı
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentType('nakit')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                    selectedPaymentType === 'nakit'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-700'
+                  }`}
+                >
+                  Nakit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPaymentType('open')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                    selectedPaymentType === 'open'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-300 dark:hover:bg-stone-700'
+                  }`}
+                >
+                  Açık
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Visual Scrollable Preview */}
@@ -468,10 +539,23 @@ export const PrintTicketModal: React.FC<PrintTicketModalProps> = ({ order, setti
             <button
               onClick={handlePrint}
               disabled={isPrinting}
-              className="w-full sm:flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+              className={`w-full sm:flex-1 py-2.5 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50 ${
+                printSuccess
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-amber-500 hover:bg-amber-400 text-stone-950'
+              }`}
             >
-              <Printer className="w-4 h-4" />
-              <span>{isPrinting ? 'Doğrudan Yazdırılıyor...' : 'Direkt Yazdır & Kapat'}</span>
+              {printSuccess ? (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Fiş Yazıcıya Gönderildi ✓</span>
+                </>
+              ) : (
+                <>
+                  <Printer className="w-4 h-4" />
+                  <span>{isPrinting ? 'Doğrudan Yazdırılıyor...' : 'Direkt Yazdır & Kapat'}</span>
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -183,17 +183,7 @@ export class StorageService {
     const data = localStorage.getItem(STORAGE_KEYS.MENU_ITEMS);
     if (!data) return initialMenuItems;
     try {
-      const parsed: MenuItem[] = JSON.parse(data);
-      // Auto-backfill recipe for demo items if not present
-      return parsed.map((item) => {
-        if (!item.recipe || item.recipe.length === 0) {
-          const match = initialMenuItems.find((init) => init.id === item.id);
-          if (match?.recipe && match.recipe.length > 0) {
-            return { ...item, recipe: match.recipe };
-          }
-        }
-        return item;
-      });
+      return JSON.parse(data);
     } catch {
       return initialMenuItems;
     }
@@ -216,12 +206,7 @@ export class StorageService {
     const data = localStorage.getItem(STORAGE_KEYS.STOCK_ITEMS);
     if (!data) return initialStockItems;
     try {
-      const parsed: StockItem[] = JSON.parse(data);
-      if (!parsed.some((s) => s.id === 'stk-10')) {
-        const stk10 = initialStockItems.find((s) => s.id === 'stk-10');
-        if (stk10) return [...parsed, stk10];
-      }
-      return parsed;
+      return JSON.parse(data);
     } catch {
       return initialStockItems;
     }
@@ -242,7 +227,7 @@ export class StorageService {
 
   static getOrders(): Order[] {
     const data = localStorage.getItem(STORAGE_KEYS.ORDERS);
-    return data ? JSON.parse(data) : initialOrders;
+    return data ? JSON.parse(data) : [];
   }
 
   static saveOrders(orders: Order[], sync = true, logDetails?: { action: string; details?: string; userName?: string; role?: string }): void {
@@ -396,6 +381,7 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.PURCHASE_INVOICES, JSON.stringify(initialPurchaseInvoices));
     localStorage.setItem(STORAGE_KEYS.EXPENSE_INVOICES, JSON.stringify(initialExpenseInvoices));
     localStorage.setItem(STORAGE_KEYS.DAILY_Z_REPORTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([]));
 
     try {
       await fetch('/api/reset-data', { method: 'POST' });

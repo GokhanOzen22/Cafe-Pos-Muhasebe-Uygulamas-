@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, CreditCard, Banknote, X, Printer } from 'lucide-react';
 import { StorageService } from './services/storage';
 import { Zone, Table, Category, MenuItem, StockItem, Order, OrderItem, RestaurantSettings, UserRole, AppUser, PurchaseInvoice, ExpenseInvoice, KitchenNotification, DailyZReport } from './types';
@@ -19,7 +19,9 @@ import { AddInvoiceModal } from './components/AddInvoiceModal';
 import { UserManualModal } from './components/UserManualModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { KitchenReadyAlert } from './components/KitchenReadyAlert';
+import { CloseDayModal } from './components/CloseDayModal';
 import { playKitchenReadyChime, triggerDesktopNotification } from './utils/audioAlert';
+import { generateTicketHtml, executeThermalPrint } from './utils/thermalPrinter';
 
 export default function App() {
   const [zones, setZones] = useState<Zone[]>([]);
@@ -78,8 +80,31 @@ export default function App() {
   const [showCriticalStockModal, setShowCriticalStockModal] = useState<boolean>(false);
   const [showUserManualModal, setShowUserManualModal] = useState<boolean>(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<boolean>(false);
+  const [showCloseDayModal, setShowCloseDayModal] = useState<boolean>(false);
   const [debtPaymentModalOrder, setDebtPaymentModalOrder] = useState<Order | null>(null);
   const [debtPaymentType, setDebtPaymentType] = useState<'nakit' | 'kredi_karti'>('kredi_karti');
+
+  // Refs to guarantee freshest values during rapid concurrent updates and prevent polling overwrites
+  const zonesRef = useRef(zones);
+  zonesRef.current = zones;
+  const tablesRef = useRef(tables);
+  tablesRef.current = tables;
+  const categoriesRef = useRef(categories);
+  categoriesRef.current = categories;
+  const menuItemsRef = useRef(menuItems);
+  menuItemsRef.current = menuItems;
+  const stockItemsRef = useRef(stockItems);
+  stockItemsRef.current = stockItems;
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const usersRef = useRef(users);
+  usersRef.current = users;
+  const purchaseInvoicesRef = useRef(purchaseInvoices);
+  purchaseInvoicesRef.current = purchaseInvoices;
+  const expenseInvoicesRef = useRef(expenseInvoices);
+  expenseInvoicesRef.current = expenseInvoices;
 
   // Load state on mount and sync with local Kasa server
   useEffect(() => {
@@ -101,11 +126,7 @@ export default function App() {
       setExpenseInvoices(StorageService.getExpenseInvoices());
       setDailyZReports(StorageService.getDailyZReports());
 
-      let localOrders = StorageService.getOrders();
-      if (!localOrders || localOrders.length === 0) {
-        localOrders = initialOrders;
-        StorageService.saveOrders(localOrders, false);
-      }
+      const localOrders = StorageService.getOrders();
       setOrders(localOrders);
       setUsers(loadedUsers);
       setSettings(StorageService.getSettings());
@@ -141,19 +162,50 @@ export default function App() {
     loadInitialData();
 
     // Periodic poll from Local Kasa Express server for real-time tablet sync (every 3 seconds)
+    // Only dispatch React state updates if the server data actually changed to prevent resetting active user inputs
     const pollInterval = setInterval(async () => {
       const serverData = await StorageService.fetchFullDataFromServer();
       if (serverData) {
-        if (serverData.zones) setZones(serverData.zones);
-        if (serverData.tables) setTables(serverData.tables);
-        if (serverData.categories) setCategories(serverData.categories);
-        if (serverData.menuItems) setMenuItems(serverData.menuItems);
-        if (serverData.stockItems) setStockItems(serverData.stockItems);
-        if (serverData.purchaseInvoices) setPurchaseInvoices(serverData.purchaseInvoices);
-        if (serverData.expenseInvoices) setExpenseInvoices(serverData.expenseInvoices);
-        if (serverData.orders) setOrders(serverData.orders);
-        if (serverData.settings) setSettings(serverData.settings);
-        if (serverData.users) setUsers(serverData.users);
+        if (serverData.zones && JSON.stringify(serverData.zones) !== JSON.stringify(zonesRef.current)) {
+          zonesRef.current = serverData.zones;
+          setZones(serverData.zones);
+        }
+        if (serverData.tables && JSON.stringify(serverData.tables) !== JSON.stringify(tablesRef.current)) {
+          tablesRef.current = serverData.tables;
+          setTables(serverData.tables);
+        }
+        if (serverData.categories && JSON.stringify(serverData.categories) !== JSON.stringify(categoriesRef.current)) {
+          categoriesRef.current = serverData.categories;
+          setCategories(serverData.categories);
+        }
+        if (serverData.menuItems && JSON.stringify(serverData.menuItems) !== JSON.stringify(menuItemsRef.current)) {
+          menuItemsRef.current = serverData.menuItems;
+          setMenuItems(serverData.menuItems);
+        }
+        if (serverData.stockItems && JSON.stringify(serverData.stockItems) !== JSON.stringify(stockItemsRef.current)) {
+          stockItemsRef.current = serverData.stockItems;
+          setStockItems(serverData.stockItems);
+        }
+        if (serverData.purchaseInvoices && JSON.stringify(serverData.purchaseInvoices) !== JSON.stringify(purchaseInvoicesRef.current)) {
+          purchaseInvoicesRef.current = serverData.purchaseInvoices;
+          setPurchaseInvoices(serverData.purchaseInvoices);
+        }
+        if (serverData.expenseInvoices && JSON.stringify(serverData.expenseInvoices) !== JSON.stringify(expenseInvoicesRef.current)) {
+          expenseInvoicesRef.current = serverData.expenseInvoices;
+          setExpenseInvoices(serverData.expenseInvoices);
+        }
+        if (serverData.orders && JSON.stringify(serverData.orders) !== JSON.stringify(ordersRef.current)) {
+          ordersRef.current = serverData.orders;
+          setOrders(serverData.orders);
+        }
+        if (serverData.settings && JSON.stringify(serverData.settings) !== JSON.stringify(settingsRef.current)) {
+          settingsRef.current = serverData.settings;
+          setSettings(serverData.settings);
+        }
+        if (serverData.users && JSON.stringify(serverData.users) !== JSON.stringify(usersRef.current)) {
+          usersRef.current = serverData.users;
+          setUsers(serverData.users);
+        }
         if (serverData.notifications) {
           setNotifications(serverData.notifications);
           // Detect newly arrived unread notifications from kitchen!
@@ -259,15 +311,24 @@ export default function App() {
 
   // Sync to storage on state changes
   const saveAll = (
-    newZones = zones,
-    newTables = tables,
-    newCategories = categories,
-    newMenuItems = menuItems,
-    newStock = stockItems,
-    newOrders = orders,
-    newSettings = settings,
-    newUsers = users
+    newZones = zonesRef.current,
+    newTables = tablesRef.current,
+    newCategories = categoriesRef.current,
+    newMenuItems = menuItemsRef.current,
+    newStock = stockItemsRef.current,
+    newOrders = ordersRef.current,
+    newSettings = settingsRef.current,
+    newUsers = usersRef.current
   ) => {
+    zonesRef.current = newZones;
+    tablesRef.current = newTables;
+    categoriesRef.current = newCategories;
+    menuItemsRef.current = newMenuItems;
+    stockItemsRef.current = newStock;
+    ordersRef.current = newOrders;
+    settingsRef.current = newSettings;
+    usersRef.current = newUsers;
+
     StorageService.saveZones(newZones);
     StorageService.saveTables(newTables);
     StorageService.saveCategories(newCategories);
@@ -276,6 +337,24 @@ export default function App() {
     StorageService.saveOrders(newOrders);
     StorageService.saveSettings(newSettings);
     StorageService.saveUsers(newUsers);
+  };
+
+  // Atomic update for menu and stock items (essential for "Otomatik Stok Aç & Bağla")
+  const handleUpdateMenuAndStockItems = (newItems: MenuItem[], newStock: StockItem[]) => {
+    menuItemsRef.current = newItems;
+    stockItemsRef.current = newStock;
+    setMenuItems(newItems);
+    setStockItems(newStock);
+    saveAll(
+      zonesRef.current,
+      tablesRef.current,
+      categoriesRef.current,
+      newItems,
+      newStock,
+      ordersRef.current,
+      settingsRef.current,
+      usersRef.current
+    );
   };
 
 
@@ -999,6 +1078,7 @@ export default function App() {
   }
 
   const unpaidDebtCount = orders.filter((o) => o.status === 'unpaid_debt').length;
+  const unsealedOrdersCount = orders.filter((o) => o.status === 'closed' && !o.zReportId).length;
 
   return (
     <div className="min-h-screen flex flex-col bg-stone-100 dark:bg-stone-950 text-stone-900 dark:text-stone-100 antialiased font-sans w-full max-w-full overflow-x-hidden">
@@ -1021,6 +1101,8 @@ export default function App() {
         onOpenCriticalStockModal={() => setShowCriticalStockModal(true)}
         onOpenAddInvoiceModal={() => setShowAddInvoiceModal(true)}
         onOpenUserManualModal={() => setShowUserManualModal(true)}
+        onOpenCloseDayModal={() => setShowCloseDayModal(true)}
+        unsealedOrdersCount={unsealedOrdersCount}
         notifications={notifications}
         onMarkNotificationRead={handleMarkNotificationRead}
         onClearNotifications={handleClearNotifications}
@@ -1038,9 +1120,11 @@ export default function App() {
             settings={settings}
             currentUser={currentUser}
             unpaidDebtCount={unpaidDebtCount}
+            unsealedOrdersCount={unsealedOrdersCount}
             onSelectTable={(tbl) => setSelectedTable(tbl)}
             onQuickNewOrder={(tbl) => setSelectedTable(tbl)}
             onOpenUnpaidDebtsModal={() => setShowUnpaidDebtsModal(true)}
+            onOpenCloseDayModal={() => setShowCloseDayModal(true)}
           />
         )}
 
@@ -1088,32 +1172,40 @@ export default function App() {
             }}
             onOpenAddInvoiceModal={() => setShowAddInvoiceModal(true)}
             onUpdateCategories={(newCat) => {
+              categoriesRef.current = newCat;
               setCategories(newCat);
-              saveAll(zones, tables, newCat, menuItems, stockItems, orders, settings, users);
+              saveAll(zonesRef.current, tablesRef.current, newCat, menuItemsRef.current, stockItemsRef.current, ordersRef.current, settingsRef.current, usersRef.current);
             }}
             onUpdateMenuItems={(newItems) => {
+              menuItemsRef.current = newItems;
               setMenuItems(newItems);
-              saveAll(zones, tables, categories, newItems, stockItems, orders, settings, users);
+              saveAll(zonesRef.current, tablesRef.current, categoriesRef.current, newItems, stockItemsRef.current, ordersRef.current, settingsRef.current, usersRef.current);
             }}
             onUpdateStockItems={(newStock) => {
+              stockItemsRef.current = newStock;
               setStockItems(newStock);
-              saveAll(zones, tables, categories, menuItems, newStock, orders, settings, users);
+              saveAll(zonesRef.current, tablesRef.current, categoriesRef.current, menuItemsRef.current, newStock, ordersRef.current, settingsRef.current, usersRef.current);
             }}
+            onUpdateMenuAndStockItems={handleUpdateMenuAndStockItems}
             onUpdateZones={(newZones) => {
+              zonesRef.current = newZones;
               setZones(newZones);
-              saveAll(newZones, tables, categories, menuItems, stockItems, orders, settings, users);
+              saveAll(newZones, tablesRef.current, categoriesRef.current, menuItemsRef.current, stockItemsRef.current, ordersRef.current, settingsRef.current, usersRef.current);
             }}
             onUpdateTables={(newTables) => {
+              tablesRef.current = newTables;
               setTables(newTables);
-              saveAll(zones, newTables, categories, menuItems, stockItems, orders, settings, users);
+              saveAll(zonesRef.current, newTables, categoriesRef.current, menuItemsRef.current, stockItemsRef.current, ordersRef.current, settingsRef.current, usersRef.current);
             }}
             onUpdateSettings={(newSettings) => {
+              settingsRef.current = newSettings;
               setSettings(newSettings);
-              saveAll(zones, tables, categories, menuItems, stockItems, orders, newSettings, users);
+              saveAll(zonesRef.current, tablesRef.current, categoriesRef.current, menuItemsRef.current, stockItemsRef.current, ordersRef.current, newSettings, usersRef.current);
             }}
             onUpdateUsers={(newUsers) => {
+              usersRef.current = newUsers;
               setUsers(newUsers);
-              saveAll(zones, tables, categories, menuItems, stockItems, orders, settings, newUsers);
+              saveAll(zonesRef.current, tablesRef.current, categoriesRef.current, menuItemsRef.current, stockItemsRef.current, ordersRef.current, settingsRef.current, newUsers);
             }}
             onOpenPrintTicket={(order) => setPrintingOrder(order)}
           />
@@ -1146,6 +1238,7 @@ export default function App() {
           menuItems={menuItems}
           settings={settings}
           currentUser={currentUser}
+          unsealedOrdersCount={unsealedOrdersCount}
           onClose={() => setSelectedTable(null)}
           onSaveOrder={handleSaveOrder}
           onClosePayment={handleClosePayment}
@@ -1155,7 +1248,23 @@ export default function App() {
             setSelectedTable(null);
           }}
           onOpenPrintTicket={(ord) => setPrintingOrder(ord)}
+          onOpenCloseDayModal={() => setShowCloseDayModal(true)}
           onMarkAsUnpaidDebt={handleMarkAsUnpaidDebt}
+        />
+      )}
+
+      {/* Day Closure & Z-Report Sealing Modal */}
+      {showCloseDayModal && (
+        <CloseDayModal
+          isOpen={showCloseDayModal}
+          onClose={() => setShowCloseDayModal(false)}
+          orders={orders}
+          tables={tables}
+          menuItems={menuItems}
+          settings={settings}
+          currentUser={currentUser}
+          dailyZReports={dailyZReports}
+          onExecuteCloseDay={handleCloseDay}
         />
       )}
 
@@ -1247,10 +1356,35 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => {
+                  const paidDebtOrder: Order = {
+                    ...debtPaymentModalOrder,
+                    status: 'closed',
+                    paymentType: debtPaymentType,
+                    closedAt: new Date().toISOString(),
+                    debtCollectedAt: new Date().toISOString(),
+                  };
                   handleClosePayment(debtPaymentModalOrder.id, debtPaymentType, debtPaymentModalOrder.totalAmount);
                   setDebtPaymentModalOrder(null);
                   setShowUnpaidDebtsModal(false);
                   showToast(`"${debtPaymentModalOrder.customerNotes}" müşteri borcu tahsil edildi!`, 3000);
+
+                  // Direct thermal receipt print for collected debt
+                  if (settings.autoPrintReceiptOnPayment !== false) {
+                    try {
+                      const targetPrinter =
+                        settings.selectedPrinterName ||
+                        settings.printers?.find((p) => p.isDefault)?.usbDeviceName ||
+                        settings.printers?.find((p) => p.isDefault)?.name ||
+                        '';
+                      const htmlContent = generateTicketHtml(paidDebtOrder, settings, {
+                        showLogo: true,
+                        forcedPaymentType: debtPaymentType,
+                      });
+                      executeThermalPrint(htmlContent, targetPrinter);
+                    } catch (e) {
+                      console.error('Borç tahsilatı fişi yazdırma hatası:', e);
+                    }
+                  }
                 }}
                 className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition-colors"
               >

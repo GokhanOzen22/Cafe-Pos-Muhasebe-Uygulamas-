@@ -18,6 +18,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 import { formatCurrency, formatDate, formatTime } from '../utils/formatters';
+import { generateZReportHtml, executeThermalPrint } from '../utils/thermalPrinter';
 import { UserManagement } from './UserManagement';
 import { HardwareSettings } from './HardwareSettings';
 import { BoxStockIntake } from './BoxStockIntake';
@@ -43,6 +44,7 @@ interface AdminPanelProps {
   onUpdateCategories: (categories: Category[]) => void;
   onUpdateMenuItems: (items: MenuItem[]) => void;
   onUpdateStockItems: (items: StockItem[]) => void;
+  onUpdateMenuAndStockItems?: (items: MenuItem[], stock: StockItem[]) => void;
   onUpdatePurchaseInvoices?: (invoices: PurchaseInvoice[]) => void;
   onAddPurchaseInvoice?: (invoice: PurchaseInvoice) => void;
   onUpdateExpenseInvoices?: (expenses: ExpenseInvoice[]) => void;
@@ -74,6 +76,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateCategories,
   onUpdateMenuItems,
   onUpdateStockItems,
+  onUpdateMenuAndStockItems,
   onUpdatePurchaseInvoices,
   onAddPurchaseInvoice,
   onUpdateExpenseInvoices,
@@ -179,7 +182,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
   }, [showZReportModal]);
 
-  const handlePrintZReport = async () => {
+  const handlePrintZReport = async (reportOverride?: DailyZReport | null) => {
     const targetPrinter =
       settings.selectedPrinterName ||
       settings.printers?.find((p) => p.isDefault)?.usbDeviceName ||
@@ -187,15 +190,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       '';
 
     try {
-      if (typeof window !== 'undefined' && window.electronAPI && typeof window.electronAPI.printDirect === 'function') {
-        const result = await window.electronAPI.printDirect({
-          silent: true,
-          deviceName: targetPrinter,
-          copies: 1,
-        });
-        if (result && result.success) {
-          return;
-        }
+      const targetReport = reportOverride !== undefined ? reportOverride : selectedArchiveZReport;
+      const htmlContent = generateZReportHtml({
+        targetReport,
+        activeRevenue: totalRevenue,
+        activeOrdersCount: closedOrders.length,
+        activePaymentStats: paymentMethodStats,
+        activeTax: totalTax,
+        activeDiscounts: totalDiscounts,
+        activeProfit: estimatedProfit,
+        activeSoldItems: allSoldItems,
+        activeOpenTablesCount: activeOpenTables.length,
+        activeOpenTablesAmount: activeOpenAmount,
+        activeUnpaidDebtsCount: activeUnpaidDebtCount,
+        activeUnpaidDebtsAmount: activeUnpaidDebtAmount,
+        activeUnpaidDebtsList: activeUnpaidDebts.map((d) => ({
+          orderId: d.id,
+          customerName: d.customerNotes || 'İsimsiz Müşteri',
+          tableName: d.tableName,
+          amount: d.totalAmount,
+          createdAt: d.createdAt,
+        })),
+        settings,
+        currentUser: currentUser ? {
+          id: currentUser.id,
+          name: currentUser.name,
+          role: currentUser.role,
+        } : undefined,
+        reportDateFilter,
+        selectedDate,
+      });
+
+      const res = await executeThermalPrint(htmlContent, targetPrinter);
+      if (res.success) {
+        showToast('✓ Z-Raporu başarıyla termal yazıcıya gönderildi.');
+        return;
       }
       window.print();
     } catch (err) {
@@ -300,10 +329,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Edit Settings State
   const [editSettingsForm, setEditSettingsForm] = useState<RestaurantSettings>({ ...settings });
+  const lastSyncedSettingsRef = React.useRef<string>(JSON.stringify(settings));
 
   React.useEffect(() => {
-    setEditSettingsForm({ ...settings });
+    const currentSettingsStr = JSON.stringify(settings);
+    if (currentSettingsStr !== lastSyncedSettingsRef.current) {
+      lastSyncedSettingsRef.current = currentSettingsStr;
+      // Only overwrite if the user is not actively editing with unsaved differences
+      setEditSettingsForm((prev) => {
+        const hasUnsavedChanges =
+          prev.name !== settings.name ||
+          prev.phone !== settings.phone ||
+          prev.taxNumber !== settings.taxNumber ||
+          prev.taxOffice !== settings.taxOffice ||
+          prev.address !== settings.address;
+        if (hasUnsavedChanges) {
+          return prev;
+        }
+        return { ...settings };
+      });
+    }
   }, [settings]);
+
+  const openBusinessInfoModal = () => {
+    setEditSettingsForm({ ...settings });
+    lastSyncedSettingsRef.current = JSON.stringify(settings);
+    setShowBusinessInfoModal(true);
+  };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -741,26 +793,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!newItemName.trim() || !newItemPrice) return;
 
     let finalRecipe: RecipeItem[] = [];
-    const createdStockItems = [...stockItems];
+    let createdStockItems = [...stockItems];
 
     if (stockLinkMode === 'auto_create') {
-      const newStockId = 'stk-' + Date.now();
       const autoStockQty = parseFloat(newItemStock) || 0;
-      const createdStock: StockItem = {
-        id: newStockId,
-        name: newItemName.trim(),
-        category: categories.find((c) => c.id === newItemCategory)?.name || 'Genel',
-        quantity: autoStockQty,
-        unit: (newItemUnit === 'Porsiyon' || newItemUnit === 'Fincan' || newItemUnit === 'Bardak' || newItemUnit === 'Dilim')
-          ? 'adet'
-          : newItemUnit.toLowerCase(),
-        minThreshold: 10,
-        costPerUnit: parseFloat(newItemCost) || 0,
-        lastUpdated: new Date().toISOString(),
-      };
-      createdStockItems.push(createdStock);
-      onUpdateStockItems(createdStockItems);
-      finalRecipe = [{ stockItemId: newStockId, amount: 1 }];
+      const trimmedName = newItemName.trim();
+      const existingStock = stockItems.find(
+        (s) => s.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      );
+
+      let targetStockId: string;
+      if (existingStock) {
+        targetStockId = existingStock.id;
+        const updatedExisting: StockItem = {
+          ...existingStock,
+          quantity: (existingStock.quantity || 0) + autoStockQty,
+          costPerUnit: parseFloat(newItemCost) || existingStock.costPerUnit || 0,
+          lastUpdated: new Date().toISOString(),
+        };
+        createdStockItems = stockItems.map((s) => (s.id === existingStock.id ? updatedExisting : s));
+      } else {
+        targetStockId = 'stk-' + Date.now();
+        const createdStock: StockItem = {
+          id: targetStockId,
+          name: trimmedName,
+          category: categories.find((c) => c.id === newItemCategory)?.name || 'Genel',
+          quantity: autoStockQty,
+          unit: (newItemUnit === 'Porsiyon' || newItemUnit === 'Fincan' || newItemUnit === 'Bardak' || newItemUnit === 'Dilim')
+            ? 'adet'
+            : newItemUnit.toLowerCase(),
+          minThreshold: 10,
+          costPerUnit: parseFloat(newItemCost) || 0,
+          lastUpdated: new Date().toISOString(),
+        };
+        createdStockItems = [...stockItems, createdStock];
+      }
+
+      finalRecipe = [{ stockItemId: targetStockId, amount: 1 }];
     } else if (stockLinkMode === 'link_existing') {
       if (selectedStockId) {
         finalRecipe = [{ stockItemId: selectedStockId, amount: parseFloat(selectedStockAmount) || 1 }];
@@ -784,13 +853,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       recipe: finalRecipe,
     };
 
-    onUpdateMenuItems([...menuItems, newItem]);
+    const updatedMenuItems = [...menuItems, newItem];
+
+    // Persist immediately to StorageService and sync to local server
+    if (stockLinkMode === 'auto_create') {
+      StorageService.saveStockItems(createdStockItems, true, {
+        action: 'Otomatik Stok Kartı Açıldı',
+        details: `"${newItem.name}" için otomatik depo stok kartı (${newItemStock} ${newItemUnit}) açıldı.`,
+        userName: currentUser?.name,
+        role: currentUser?.role,
+      });
+    }
+    StorageService.saveMenuItems(updatedMenuItems, true);
+
+    // Call atomic update if provided to avoid stale closure overwriting
+    if (stockLinkMode === 'auto_create' && onUpdateMenuAndStockItems) {
+      onUpdateMenuAndStockItems(updatedMenuItems, createdStockItems);
+    } else {
+      if (stockLinkMode === 'auto_create') {
+        onUpdateStockItems(createdStockItems);
+      }
+      onUpdateMenuItems(updatedMenuItems);
+    }
+
     setShowAddMenuModal(false);
     setNewItemName('');
     setNewItemPrice('');
     setNewItemCost('');
     setRecipeItems([]);
-    showToast(`✓ "${newItem.name}" menüye eklendi ve stok bağlantısı sağlandı!`);
+    showToast(`✓ "${newItem.name}" menüye eklendi ve depoda stok kartı oluşturuldu!`);
   };
 
   // Open Edit Menu Item Modal
@@ -829,26 +920,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     if (!editingMenuItem || !editItemName.trim()) return;
 
     let finalRecipe: RecipeItem[] = [];
-    const updatedStockItemsList = [...stockItems];
+    let updatedStockItemsList = [...stockItems];
 
     if (editStockLinkMode === 'auto_create') {
-      const newStockId = 'stk-' + Date.now();
       const autoStockQty = parseFloat(editItemStock) || 0;
-      const createdStock: StockItem = {
-        id: newStockId,
-        name: editItemName.trim(),
-        category: categories.find((c) => c.id === editItemCategory)?.name || 'Genel',
-        quantity: autoStockQty,
-        unit: (editItemUnit === 'Porsiyon' || editItemUnit === 'Fincan' || editItemUnit === 'Bardak' || editItemUnit === 'Dilim')
-          ? 'adet'
-          : editItemUnit.toLowerCase(),
-        minThreshold: 10,
-        costPerUnit: parseFloat(editItemCost) || 0,
-        lastUpdated: new Date().toISOString(),
-      };
-      updatedStockItemsList.push(createdStock);
-      onUpdateStockItems(updatedStockItemsList);
-      finalRecipe = [{ stockItemId: newStockId, amount: 1 }];
+      const trimmedName = editItemName.trim();
+      const existingStock = stockItems.find(
+        (s) => s.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      );
+
+      let targetStockId: string;
+      if (existingStock) {
+        targetStockId = existingStock.id;
+        const updatedExisting: StockItem = {
+          ...existingStock,
+          quantity: (existingStock.quantity || 0) + autoStockQty,
+          costPerUnit: parseFloat(editItemCost) || existingStock.costPerUnit || 0,
+          lastUpdated: new Date().toISOString(),
+        };
+        updatedStockItemsList = stockItems.map((s) => (s.id === existingStock.id ? updatedExisting : s));
+      } else {
+        targetStockId = 'stk-' + Date.now();
+        const createdStock: StockItem = {
+          id: targetStockId,
+          name: trimmedName,
+          category: categories.find((c) => c.id === editItemCategory)?.name || 'Genel',
+          quantity: autoStockQty,
+          unit: (editItemUnit === 'Porsiyon' || editItemUnit === 'Fincan' || editItemUnit === 'Bardak' || editItemUnit === 'Dilim')
+            ? 'adet'
+            : editItemUnit.toLowerCase(),
+          minThreshold: 10,
+          costPerUnit: parseFloat(editItemCost) || 0,
+          lastUpdated: new Date().toISOString(),
+        };
+        updatedStockItemsList = [...stockItems, createdStock];
+      }
+      finalRecipe = [{ stockItemId: targetStockId, amount: 1 }];
     } else if (editStockLinkMode === 'link_existing') {
       if (editSelectedStockId) {
         finalRecipe = [{ stockItemId: editSelectedStockId, amount: parseFloat(editSelectedStockAmount) || 1 }];
@@ -875,7 +982,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return m;
     });
 
-    onUpdateMenuItems(updatedList);
+    if (editStockLinkMode === 'auto_create') {
+      StorageService.saveStockItems(updatedStockItemsList, true, {
+        action: 'Otomatik Stok Kartı Güncellendi',
+        details: `"${editItemName}" için otomatik depo stok kartı güncellendi.`,
+        userName: currentUser?.name,
+        role: currentUser?.role,
+      });
+    }
+    StorageService.saveMenuItems(updatedList, true);
+
+    if (editStockLinkMode === 'auto_create' && onUpdateMenuAndStockItems) {
+      onUpdateMenuAndStockItems(updatedList, updatedStockItemsList);
+    } else {
+      if (editStockLinkMode === 'auto_create') {
+        onUpdateStockItems(updatedStockItemsList);
+      }
+      onUpdateMenuItems(updatedList);
+    }
+
     setEditingMenuItem(null);
     showToast(`✓ "${editItemName}" menü ürünü ve stok bağlantısı güncellendi!`);
   };
@@ -1703,7 +1828,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => setShowBusinessInfoModal(true)}
+              onClick={openBusinessInfoModal}
               className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-stone-950 font-bold rounded-xl text-xs border border-amber-500/40 transition-all cursor-pointer shadow-xs shrink-0"
               title="Vergi No, Adres, Telefon ve Fiş Başlığı Bilgilerini Düzenle"
             >
@@ -1745,7 +1870,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {canManageSettings && (
                     <button
                       type="button"
-                      onClick={() => setShowBusinessInfoModal(true)}
+                      onClick={openBusinessInfoModal}
                       className="ml-1 text-amber-600 dark:text-amber-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
                       title="İşletme Bilgilerini Düzenle"
                     >
@@ -1761,7 +1886,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {canManageSettings && (
                 <button
                   type="button"
-                  onClick={() => setShowBusinessInfoModal(true)}
+                  onClick={openBusinessInfoModal}
                   className="py-2.5 px-3.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-750 text-stone-800 dark:text-stone-200 font-bold text-xs rounded-2xl flex items-center justify-center gap-1.5 transition-all border border-stone-300 dark:border-stone-700 cursor-pointer shadow-xs shrink-0"
                   title="Vergi No, Adres ve Telefon Bilgilerini Değiştir"
                 >
@@ -3691,15 +3816,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   {/* Address Field */}
                   <div>
-                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                      <span>İşletme Adresi (Fişte ve Z-Raporunda Görünür):</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                        <span>İşletme Adresi (Fişte ve Z-Raporunda Görünür):</span>
+                      </label>
+                      {Boolean(editSettingsForm.address) && (
+                        <button
+                          type="button"
+                          onClick={() => setEditSettingsForm((prev) => ({ ...prev, address: '' }))}
+                          className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                        >
+                          Temizle
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       placeholder="Örn: Meriç Sosyal Tesisleri, Edirne"
                       value={editSettingsForm.address || ''}
                       onChange={(e) => setEditSettingsForm({ ...editSettingsForm, address: e.target.value })}
+                      autoComplete="off"
                       className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                     />
                   </div>
@@ -3707,29 +3844,59 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Phone & Tax Number (VKN) Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
-                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                        <Phone className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Telefon Numarası:</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Telefon Numarası:</span>
+                        </label>
+                        {Boolean(editSettingsForm.phone) && (
+                          <button
+                            type="button"
+                            onClick={() => setEditSettingsForm((prev) => ({ ...prev, phone: '' }))}
+                            className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                          >
+                            Temizle
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         placeholder="Örn: 0 (284) 513 10 10"
                         value={editSettingsForm.phone || ''}
-                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, phone: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditSettingsForm((prev) => ({ ...prev, phone: val }));
+                        }}
+                        autoComplete="off"
                         className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden font-mono"
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                        <FileText className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Vergi Kimlik No (VKN / TCKN):</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Vergi Kimlik No (VKN / TCKN):</span>
+                        </label>
+                        {Boolean(editSettingsForm.taxNumber) && (
+                          <button
+                            type="button"
+                            onClick={() => setEditSettingsForm((prev) => ({ ...prev, taxNumber: '' }))}
+                            className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                          >
+                            Temizle
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         placeholder="Örn: 6180054321"
                         value={editSettingsForm.taxNumber || ''}
-                        onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxNumber: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditSettingsForm((prev) => ({ ...prev, taxNumber: val }));
+                        }}
+                        autoComplete="off"
                         className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-black text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden font-mono tracking-wider"
                       />
                     </div>
@@ -3738,15 +3905,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Tax Office & VAT Rate Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <div>
-                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                        <Landmark className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Vergi Dairesi (Opsiyonel):</span>
-                      </label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                          <Landmark className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Vergi Dairesi (Opsiyonel):</span>
+                        </label>
+                        {Boolean(editSettingsForm.taxOffice) && (
+                          <button
+                            type="button"
+                            onClick={() => setEditSettingsForm((prev) => ({ ...prev, taxOffice: '' }))}
+                            className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                          >
+                            Temizle
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="text"
                         placeholder="Örn: Meriç Vergi Dairesi"
                         value={editSettingsForm.taxOffice || ''}
                         onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxOffice: e.target.value })}
+                        autoComplete="off"
                         className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                       />
                     </div>
@@ -3769,30 +3948,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                   {/* Receipt Header Note */}
                   <div>
-                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Fiş Üst Notu (Karşılama Metni):</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Fiş Üst Notu (Karşılama Metni):</span>
+                      </label>
+                      {Boolean(editSettingsForm.receiptHeaderNote) && (
+                        <button
+                          type="button"
+                          onClick={() => setEditSettingsForm((prev) => ({ ...prev, receiptHeaderNote: '' }))}
+                          className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                        >
+                          Temizle
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       placeholder="Örn: Meriç Belediyesi Sosyal Tesislerine Hoş Geldiniz"
                       value={editSettingsForm.receiptHeaderNote || ''}
                       onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptHeaderNote: e.target.value })}
+                      autoComplete="off"
                       className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                     />
                   </div>
 
                   {/* Receipt Footer Note */}
                   <div>
-                    <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
-                      <Tag className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Fiş Altı Notu (Teşekkür & İletişim Metni):</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Fiş Altı Notu (Teşekkür & İletişim Metni):</span>
+                      </label>
+                      {Boolean(editSettingsForm.receiptFooterNote) && (
+                        <button
+                          type="button"
+                          onClick={() => setEditSettingsForm((prev) => ({ ...prev, receiptFooterNote: '' }))}
+                          className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                        >
+                          Temizle
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
                       placeholder="Örn: Afiyet olsun, yine bekleriz!"
                       value={editSettingsForm.receiptFooterNote || ''}
                       onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptFooterNote: e.target.value })}
+                      autoComplete="off"
                       className="w-full mt-1.5 p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                     />
                   </div>
@@ -3802,6 +4005,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="button"
                     onClick={() => {
                       onUpdateSettings(editSettingsForm);
+                      lastSyncedSettingsRef.current = JSON.stringify(editSettingsForm);
                       showToast('✓ İşletme bilgileri (Vergi No, Adres, Telefon, Fiş Ayarları) başarıyla kaydedildi!');
                     }}
                     className="mt-4 px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl active:scale-[0.99] w-full transition-all cursor-pointer"
@@ -7373,15 +7577,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* Address */}
               <div>
-                <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                  <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                  <span>İşletme Adresi (Adisyon fişi ve Z-Raporunda yazdırılır):</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-amber-500" />
+                    <span>İşletme Adresi (Adisyon fişi ve Z-Raporunda yazdırılır):</span>
+                  </label>
+                  {Boolean(editSettingsForm.address) && (
+                    <button
+                      type="button"
+                      onClick={() => setEditSettingsForm((prev) => ({ ...prev, address: '' }))}
+                      className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   placeholder="Örn: Meriç Sosyal Tesisleri, Edirne"
                   value={editSettingsForm.address || ''}
                   onChange={(e) => setEditSettingsForm({ ...editSettingsForm, address: e.target.value })}
+                  autoComplete="off"
                   className="w-full p-2.5 sm:p-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                 />
               </div>
@@ -7389,29 +7605,59 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Phone & Tax Number (VKN) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                    <Phone className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Telefon Numarası:</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Telefon Numarası:</span>
+                    </label>
+                    {Boolean(editSettingsForm.phone) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, phone: '' }))}
+                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Örn: 0 (284) 513 10 10"
                     value={editSettingsForm.phone || ''}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, phone: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditSettingsForm((prev) => ({ ...prev, phone: val }));
+                    }}
+                    autoComplete="off"
                     className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono font-semibold text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                    <FileText className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Vergi Kimlik No (VKN / TCKN):</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Vergi Kimlik No (VKN / TCKN):</span>
+                    </label>
+                    {Boolean(editSettingsForm.taxNumber) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, taxNumber: '' }))}
+                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Örn: 6180054321"
                     value={editSettingsForm.taxNumber || ''}
-                    onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxNumber: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEditSettingsForm((prev) => ({ ...prev, taxNumber: val }));
+                    }}
+                    autoComplete="off"
                     className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-mono font-black text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden tracking-wider"
                   />
                 </div>
@@ -7420,15 +7666,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Tax Office & VAT Rate */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                    <Landmark className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Vergi Dairesi:</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Landmark className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Vergi Dairesi:</span>
+                    </label>
+                    {Boolean(editSettingsForm.taxOffice) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, taxOffice: '' }))}
+                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Örn: Meriç Vergi Dairesi"
                     value={editSettingsForm.taxOffice || ''}
                     onChange={(e) => setEditSettingsForm({ ...editSettingsForm, taxOffice: e.target.value })}
+                    autoComplete="off"
                     className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                   />
                 </div>
@@ -7452,29 +7710,53 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Receipt Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                    <Tag className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Fiş Karşılama Notu:</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Fiş Karşılama Notu:</span>
+                    </label>
+                    {Boolean(editSettingsForm.receiptHeaderNote) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, receiptHeaderNote: '' }))}
+                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Örn: Tesislerimize Hoş Geldiniz"
                     value={editSettingsForm.receiptHeaderNote || ''}
                     onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptHeaderNote: e.target.value })}
+                    autoComplete="off"
                     className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5 mb-1">
-                    <Tag className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Fiş Altı Teşekkür Notu:</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-stone-700 dark:text-stone-300 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-500" />
+                      <span>Fiş Altı Teşekkür Notu:</span>
+                    </label>
+                    {Boolean(editSettingsForm.receiptFooterNote) && (
+                      <button
+                        type="button"
+                        onClick={() => setEditSettingsForm((prev) => ({ ...prev, receiptFooterNote: '' }))}
+                        className="text-[10px] text-red-500 hover:text-red-600 font-semibold cursor-pointer hover:underline"
+                      >
+                        Temizle
+                      </button>
+                    )}
+                  </div>
                   <input
                     type="text"
                     placeholder="Örn: Afiyet olsun, yine bekleriz!"
                     value={editSettingsForm.receiptFooterNote || ''}
                     onChange={(e) => setEditSettingsForm({ ...editSettingsForm, receiptFooterNote: e.target.value })}
+                    autoComplete="off"
                     className="w-full p-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-amber-500 outline-hidden"
                   />
                 </div>
@@ -7531,6 +7813,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 type="button"
                 onClick={() => {
                   onUpdateSettings(editSettingsForm);
+                  lastSyncedSettingsRef.current = JSON.stringify(editSettingsForm);
                   setShowBusinessInfoModal(false);
                   showToast('✓ İşletme bilgileri (Vergi No, Adres, Telefon) başarıyla güncellendi!');
                 }}

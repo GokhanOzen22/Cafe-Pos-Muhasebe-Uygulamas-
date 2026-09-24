@@ -7,6 +7,7 @@ import {
   User, UserX, Lock
 } from 'lucide-react';
 import { formatCurrency, formatTime } from '../utils/formatters';
+import { generateTicketHtml, executeThermalPrint } from '../utils/thermalPrinter';
 
 interface TableDetailModalProps {
   table: Table;
@@ -15,6 +16,7 @@ interface TableDetailModalProps {
   menuItems: MenuItem[];
   settings: RestaurantSettings;
   currentUser?: AppUser | null;
+  unsealedOrdersCount?: number;
   onClose: () => void;
   onSaveOrder: (
     tableId: string,
@@ -30,6 +32,7 @@ interface TableDetailModalProps {
   onRequestBillStatus: (tableId: string, requested: boolean) => void;
   onOpenTransferModal: (table: Table) => void;
   onOpenPrintTicket: (order: Order) => void;
+  onOpenCloseDayModal?: () => void;
   onMarkAsUnpaidDebt: (
     tableId: string,
     customerNotes: string,
@@ -47,12 +50,14 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   menuItems,
   settings,
   currentUser,
+  unsealedOrdersCount = 0,
   onClose,
   onSaveOrder,
   onClosePayment,
   onRequestBillStatus,
   onOpenTransferModal,
   onOpenPrintTicket,
+  onOpenCloseDayModal,
   onMarkAsUnpaidDebt,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -75,6 +80,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const [showUnpaidModal, setShowUnpaidModal] = useState<boolean>(false);
   const [debtCustomerName, setDebtCustomerName] = useState<string>(order?.customerNotes || '');
   const [paymentType, setPaymentType] = useState<'nakit' | 'kredi_karti'>('kredi_karti');
+  const [autoPrintReceipt, setAutoPrintReceipt] = useState<boolean>(settings.autoPrintReceiptOnPayment !== false);
   const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState<string>('');
 
@@ -84,6 +90,9 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
   const canTransferTable = currentUser ? currentUser.permissions.canTransferTable : true;
   const canClosePayment = currentUser
     ? (currentUser.role === 'admin' || currentUser.permissions.canClosePayment === true)
+    : true;
+  const canCloseDay = currentUser
+    ? (currentUser.role === 'admin' || currentUser.isSystemAdmin || currentUser.permissions.canCloseDay !== false)
     : true;
 
   // Calculations
@@ -235,6 +244,59 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
     onClose();
   };
 
+  // Confirm Payment & Close Table with Direct Receipt Printout
+  const handleConfirmPaymentAndClose = async () => {
+    const finalNote = customerNotes.trim() || `Masa ${table.number}`;
+
+    // Construct the finalized order with closed status and exact payment method
+    const finalizedOrder: Order = {
+      id: order?.id || ('ord-' + Math.floor(100 + Math.random() * 900)),
+      tableId: table.id,
+      tableName: table.number,
+      zoneId: table.zoneId,
+      zoneName: order?.zoneName || 'Salon',
+      status: 'closed',
+      closedAt: new Date().toISOString(),
+      paymentType,
+      items: items.map((i) => ({ ...i, sentToKitchen: true })),
+      subtotal,
+      discountAmount: totalDiscount,
+      discountPercent,
+      taxAmount,
+      totalAmount: grandTotal,
+      waiterName: waiterName || currentUser?.name || 'Garson',
+      customerNotes: finalNote,
+      createdAt: order?.createdAt || new Date().toISOString(),
+      ticketTitle: 'ADİSYON / HESAP FİŞİ',
+    };
+
+    // Save and close table
+    onSaveOrder(table.id, items, discountPercent, numCashDiscount, waiterName, finalNote, false, paymentType);
+
+    // Direct auto print receipt as requested ("ödemeyi onayla kapat dediğimde, direk adisyonun çıktısını versin")
+    if (autoPrintReceipt) {
+      try {
+        const targetPrinter =
+          settings.selectedPrinterName ||
+          settings.printers?.find((p) => p.isDefault)?.usbDeviceName ||
+          settings.printers?.find((p) => p.isDefault)?.name ||
+          '';
+
+        const htmlContent = generateTicketHtml(finalizedOrder, settings, {
+          showLogo: true,
+          forcedPaymentType: paymentType,
+        });
+
+        executeThermalPrint(htmlContent, targetPrinter);
+      } catch (err) {
+        console.error('Doğrudan adisyon yazdırma hatası:', err);
+      }
+    }
+
+    setShowPaymentModal(false);
+    onClose();
+  };
+
   // Handle Unpaid Customer Debt ("Ödemeden Gitti")
   const handleMarkAsUnpaidDebtClick = () => {
     if (!validateCustomerNotes()) return;
@@ -288,6 +350,16 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              {canCloseDay && onOpenCloseDayModal && (
+                <button
+                  type="button"
+                  onClick={onOpenCloseDayModal}
+                  title="Günü Kapat ve Z-Raporu Mühürle"
+                  className="p-1.5 text-amber-400 hover:text-stone-950 hover:bg-amber-500 rounded-lg transition-colors flex items-center gap-1"
+                >
+                  <Lock className="w-4 h-4" />
+                </button>
+              )}
               {order && (
                 <button
                   onClick={() => onOpenPrintTicket(order)}
@@ -362,7 +434,23 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               </p>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
+              {canCloseDay && onOpenCloseDayModal && (
+                <button
+                  type="button"
+                  onClick={onOpenCloseDayModal}
+                  className="py-1.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-stone-950 font-black text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+                  title="Günü Kapat ve Resmi Z-Raporunu Mühürle"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Günü Kapat</span>
+                  {unsealedOrdersCount > 0 && (
+                    <span className="bg-stone-950 text-amber-400 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                      {unsealedOrdersCount}
+                    </span>
+                  )}
+                </button>
+              )}
               {order && (
                 <button
                   onClick={() => onOpenPrintTicket(order)}
@@ -646,7 +734,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               </button>
             )}
 
-            {/* Additional Secondary Actions: Transfer & Bill Request */}
+            {/* Additional Secondary Actions: Transfer & Bill Request & Day Close */}
             <div className="flex items-center justify-between gap-2 pt-1 text-xs">
               <button
                 onClick={() => onOpenTransferModal(table)}
@@ -655,6 +743,18 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
                 <ArrowRightLeft className="w-3.5 h-3.5" />
                 <span>Masa Taşı</span>
               </button>
+
+              {canCloseDay && onOpenCloseDayModal && (
+                <button
+                  type="button"
+                  onClick={onOpenCloseDayModal}
+                  className="flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 font-bold"
+                  title="Günü Kapat ve Resmi Z-Raporunu Mühürle"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Günü Kapat</span>
+                </button>
+              )}
 
               {canClosePayment && (
                 <button
@@ -860,31 +960,40 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({
               </div>
             </div>
 
+            {/* Auto Print Receipt Option */}
+            <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700/60 cursor-pointer select-none transition-colors hover:bg-stone-100 dark:hover:bg-stone-800">
+              <input
+                type="checkbox"
+                checked={autoPrintReceipt}
+                onChange={(e) => setAutoPrintReceipt(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 cursor-pointer"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                  Ödeme sonrası adisyon fişini yazdır
+                </span>
+              </div>
+              <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                Otomatik
+              </span>
+            </label>
+
             <div className="flex items-center gap-3 pt-3 border-t border-stone-200 dark:border-stone-800">
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
-                className="flex-1 py-3 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 rounded-xl text-sm font-semibold"
+                className="flex-1 py-3 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 rounded-xl text-sm font-semibold transition-colors"
               >
                 Vazgeç
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const finalNote = customerNotes.trim() || `Masa ${table.number}`;
-                  if (order) {
-                    // Update order totals and close payment
-                    onSaveOrder(table.id, items, discountPercent, numCashDiscount, waiterName, finalNote, false, paymentType);
-                  } else {
-                    // Create order and close payment immediately
-                    onSaveOrder(table.id, items, discountPercent, numCashDiscount, waiterName, finalNote, false, paymentType);
-                  }
-                  setShowPaymentModal(false);
-                  onClose();
-                }}
-                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-md"
+                onClick={handleConfirmPaymentAndClose}
+                className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-md flex items-center justify-center gap-2 transition-colors"
               >
-                Ödemeyi Onayla & Kapat
+                {autoPrintReceipt && <Printer className="w-4 h-4" />}
+                <span>Ödemeyi Onayla & Kapat</span>
               </button>
             </div>
 
